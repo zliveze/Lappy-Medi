@@ -32,6 +32,8 @@ interface BPReading {
 }
 
 interface ExamState {
+  // Chưa phát hiện bệnh lý
+  noPathologyFound: boolean;
   // Nội khoa
   internalEnabled: boolean;
   bpReadings: BPReading[]; // Hỗ trợ nhiều lần đo
@@ -113,6 +115,7 @@ export function PatientEditor({
 
   // Exam state
   const [exam, setExam] = useState<ExamState>({
+    noPathologyFound: false,
     internalEnabled: false,
     bpReadings: [{ systolic: '', diastolic: '' }],
     bpCondition: '',
@@ -245,6 +248,7 @@ export function PatientEditor({
   const parseGeneralExam = (text: string) => {
     const lines = text.split('\n');
     const newExam: ExamState = {
+      noPathologyFound: false,
       internalEnabled: false,
       bpReadings: [{ systolic: '', diastolic: '' }],
       bpCondition: '',
@@ -271,6 +275,13 @@ export function PatientEditor({
       dermaEnabled: false,
       dermatology: 'Bình thường',
     };
+
+    // Kiểm tra nếu là "Hiện chưa phát hiện bệnh lý"
+    if (text.toLowerCase().includes('hiện chưa phát hiện bệnh lý') || text.toLowerCase().includes('chưa phát hiện bệnh lý')) {
+      newExam.noPathologyFound = true;
+      setExam(newExam);
+      return;
+    }
 
     lines.forEach(line => {
       const lowerLine = line.toLowerCase();
@@ -364,6 +375,11 @@ export function PatientEditor({
 
   // Build general exam text - only include enabled sections
   const buildGeneralExam = useCallback((): string => {
+    // Nếu tick "Chưa phát hiện bệnh lý" thì trả về ngay
+    if (exam.noPathologyFound) {
+      return ' - Hiện chưa phát hiện bệnh lý';
+    }
+    
     const parts: string[] = [];
 
     // Nội khoa - hỗ trợ nhiều lần đo
@@ -673,7 +689,19 @@ export function PatientEditor({
 
             {/* Tab 2: General Exam */}
             <TabsContent value="exam" className="space-y-4 m-0">
-              <div className="grid grid-cols-2 gap-4">
+              {/* Checkbox: Chưa phát hiện bệnh lý */}
+              <div className="p-3 border rounded-lg bg-green-50 border-green-300">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={exam.noPathologyFound}
+                    onCheckedChange={(checked) => setExam({ ...exam, noPathologyFound: !!checked })}
+                  />
+                  <span className="font-semibold text-green-700">Hiện chưa phát hiện bệnh lý</span>
+                  <span className="text-sm text-gray-500">(Tích vào nếu không có bất thường)</span>
+                </label>
+              </div>
+
+              <div className={`grid grid-cols-2 gap-4 ${exam.noPathologyFound ? 'opacity-50 pointer-events-none' : ''}`}>
                 {/* Nội khoa */}
                 <div className={`p-4 border rounded-lg space-y-3 ${exam.internalEnabled ? 'border-blue-400 bg-blue-50/30' : ''}`}>
                   <label className="flex items-center gap-2 cursor-pointer">
