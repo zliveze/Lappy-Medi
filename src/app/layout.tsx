@@ -5,7 +5,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin', 'vietnamese'] })
 
 export const metadata: Metadata = {
-  title: 'MediExcel Lap - Nhập liệu khám sức khỏe',
+  title: 'Lappy Medi - Nhập liệu khám sức khỏe',
   description: 'Ứng dụng nhập liệu bệnh nhân nhanh chóng và chính xác',
 }
 

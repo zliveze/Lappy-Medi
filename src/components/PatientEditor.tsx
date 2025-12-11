@@ -1,16 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PatientData, BLOOD_PRESSURE_OPTIONS, EYE_OPTIONS, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, CLASSIFICATION_OPTIONS } from '@/types/patient';
+import { PatientData, BLOOD_PRESSURE_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS } from '@/types/patient';
 import { calculateBMI, getPhysiqueFromBMI } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Save, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -42,8 +41,12 @@ interface ExamState {
   eyeEnabled: boolean;
   visionLeft: string;
   visionRight: string;
+  visionLeftMode: 'normal' | 'dnt'; // Chế độ thị lực: bình thường hoặc ĐNT
+  visionRightMode: 'normal' | 'dnt';
   hasGlasses: boolean;
-  eyeConditions: string[];
+  eyeConditionsBoth: string[]; // Bệnh lý 2 mắt
+  eyeConditionsLeft: string[]; // Bệnh lý mắt trái
+  eyeConditionsRight: string[]; // Bệnh lý mắt phải
   eyeNote: string;
   // TMH
   entEnabled: boolean;
@@ -67,9 +70,9 @@ interface ImagingState {
   xray: string;
   // Siêu âm - mỗi loại có checkbox riêng
   abdomenEnabled: boolean;
-  abdomen: string;
-  liver: string;
-  kidney: string;
+  liverConditions: string[]; // Đổi sang mảng để hỗ trợ nhiều bệnh lý
+  kidneyConditions: string[];
+  abdomenNote: string; // Ghi chú thêm cho siêu âm bụng
   thyroidEnabled: boolean;
   thyroid: string;
   breastEnabled: boolean;
@@ -79,6 +82,7 @@ interface ImagingState {
   // Điện tim
   ecgEnabled: boolean;
   heartRate: string;
+  ecgAxis: string; // Trục điện tim
   ecgNote: string;
 }
 
@@ -94,7 +98,13 @@ export function PatientEditor({
   currentIndex,
   totalCount,
 }: PatientEditorProps) {
-  // Basic info
+  // Basic info - Thông tin cơ bản
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [dob, setDob] = useState('');
+  const [gender, setGender] = useState('');
+  
+  // Thể lực
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [bmi, setBmi] = useState('');
@@ -110,8 +120,12 @@ export function PatientEditor({
     eyeEnabled: false,
     visionLeft: '10/10',
     visionRight: '10/10',
+    visionLeftMode: 'normal',
+    visionRightMode: 'normal',
     hasGlasses: false,
-    eyeConditions: [],
+    eyeConditionsBoth: [],
+    eyeConditionsLeft: [],
+    eyeConditionsRight: [],
     eyeNote: '',
     entEnabled: false,
     entConditions: [],
@@ -131,9 +145,9 @@ export function PatientEditor({
     xrayEnabled: false,
     xray: '',
     abdomenEnabled: false,
-    abdomen: 'chưa ghi nhận bất thường',
-    liver: '',
-    kidney: '',
+    liverConditions: [],
+    kidneyConditions: [],
+    abdomenNote: '',
     thyroidEnabled: false,
     thyroid: 'chưa ghi nhận bất thường',
     breastEnabled: false,
@@ -142,13 +156,20 @@ export function PatientEditor({
     gynecology: 'chưa ghi nhận bất thường',
     ecgEnabled: false,
     heartRate: '',
+    ecgAxis: '',
     ecgNote: '',
   });
 
   // Parse existing data when patient changes
   useEffect(() => {
     if (patient) {
-      // Basic info
+      // Basic info - Thông tin cơ bản
+      setCode(String(patient['CODE'] || ''));
+      setName(String(patient['HỌ VÀ TÊN'] || patient['HỌ TÊN'] || ''));
+      setDob(String(patient['NS'] || ''));
+      setGender(String(patient['GT'] || ''));
+      
+      // Thể lực
       setWeight(String(patient['Cân nặng'] || ''));
       setHeight(String(patient['Chiều cao'] || ''));
       setClassification(String(patient['PHÂN LOẠI SỨC KHỎE'] || ''));
@@ -180,13 +201,33 @@ export function PatientEditor({
       const hasBreast = ultrasoundText.toLowerCase().includes('vú');
       const hasGynecology = ultrasoundText.toLowerCase().includes('phụ khoa');
       
+      // Parse liver and kidney conditions from ultrasound text
+      const parsedLiverConditions: string[] = [];
+      const parsedKidneyConditions: string[] = [];
+      LIVER_OPTIONS.forEach(opt => {
+        if (ultrasoundText.includes(opt)) parsedLiverConditions.push(opt);
+      });
+      KIDNEY_OPTIONS.forEach(opt => {
+        if (ultrasoundText.includes(opt)) parsedKidneyConditions.push(opt);
+      });
+      
+      // Parse ECG axis
+      let parsedEcgAxis = '';
+      ECG_AXIS_OPTIONS.forEach(opt => {
+        if (ecgText.includes(opt)) parsedEcgAxis = opt;
+      });
+      
+      // Parse heart rate
+      const hrMatch = ecgText.match(/Nhịp xoang[:\s]*(\d+)/i);
+      const parsedHeartRate = hrMatch ? hrMatch[1] : '';
+      
       setImaging({
         xrayEnabled: !!xrayText,
         xray: xrayText,
         abdomenEnabled: hasAbdomen,
-        abdomen: 'chưa ghi nhận bất thường',
-        liver: '',
-        kidney: '',
+        liverConditions: parsedLiverConditions,
+        kidneyConditions: parsedKidneyConditions,
+        abdomenNote: '',
         thyroidEnabled: hasThyroid,
         thyroid: 'chưa ghi nhận bất thường',
         breastEnabled: hasBreast,
@@ -194,11 +235,10 @@ export function PatientEditor({
         gynecologyEnabled: hasGynecology,
         gynecology: 'chưa ghi nhận bất thường',
         ecgEnabled: !!ecgText,
-        heartRate: '',
+        heartRate: parsedHeartRate,
+        ecgAxis: parsedEcgAxis,
         ecgNote: ecgText,
       });
-      parseUltrasound(String(patient['Siêu âm'] || ''));
-      parseEcg(String(patient['Điện tim'] || ''));
     }
   }, [patient]);
 
@@ -212,8 +252,12 @@ export function PatientEditor({
       eyeEnabled: false,
       visionLeft: '10/10',
       visionRight: '10/10',
+      visionLeftMode: 'normal',
+      visionRightMode: 'normal',
       hasGlasses: false,
-      eyeConditions: [],
+      eyeConditionsBoth: [],
+      eyeConditionsLeft: [],
+      eyeConditionsRight: [],
       eyeNote: '',
       entEnabled: false,
       entConditions: [],
@@ -234,7 +278,6 @@ export function PatientEditor({
       // Parse Nội khoa
       if (lowerLine.includes('nội khoa') || lowerLine.includes('ha ') || lowerLine.includes('huyết áp')) {
         newExam.internalEnabled = true;
-        // Parse nhiều lần đo: L1 HA 140/90, L2 HA 150/90
         const readings: BPReading[] = [];
         const bpRegex = /L?(\d)?\s*HA\s*(\d+)\/(\d+)/gi;
         let match;
@@ -244,7 +287,6 @@ export function PatientEditor({
         if (readings.length > 0) {
           newExam.bpReadings = readings;
         } else {
-          // Fallback: parse single BP
           const bpMatch = line.match(/HA\s*(\d+)\/(\d+)/i);
           if (bpMatch) {
             newExam.bpReadings = [{ systolic: bpMatch[1], diastolic: bpMatch[2] }];
@@ -259,13 +301,23 @@ export function PatientEditor({
       if (lowerLine.includes('mắt')) {
         newExam.eyeEnabled = true;
         if (lowerLine.includes('ck ')) newExam.hasGlasses = true;
-        const visionMatch = line.match(/mắt\s*\(P\)\s*(\d+\/\d+)/i);
-        const visionMatchL = line.match(/mắt\s*\(T\)\s*(\d+\/\d+)/i);
-        if (visionMatch) newExam.visionRight = visionMatch[1];
-        if (visionMatchL) newExam.visionLeft = visionMatchL[1];
-        EYE_OPTIONS.forEach(opt => {
+        
+        // Parse thị lực - hỗ trợ cả x/10 và ĐNT
+        const visionMatchR = line.match(/mắt\s*\(P\)\s*((?:\d+\/\d+)|(?:ĐNT\s*\d+m)|(?:ST\([+-]\)))/i);
+        const visionMatchL = line.match(/mắt\s*\(T\)\s*((?:\d+\/\d+)|(?:ĐNT\s*\d+m)|(?:ST\([+-]\)))/i);
+        if (visionMatchR) {
+          newExam.visionRight = visionMatchR[1];
+          newExam.visionRightMode = visionMatchR[1].includes('ĐNT') || visionMatchR[1].includes('ST') ? 'dnt' : 'normal';
+        }
+        if (visionMatchL) {
+          newExam.visionLeft = visionMatchL[1];
+          newExam.visionLeftMode = visionMatchL[1].includes('ĐNT') || visionMatchL[1].includes('ST') ? 'dnt' : 'normal';
+        }
+        
+        // Parse bệnh lý mắt
+        EYE_OPTIONS_BOTH.forEach(opt => {
           if (line.toLowerCase().includes(opt.toLowerCase())) {
-            if (!newExam.eyeConditions.includes(opt)) newExam.eyeConditions.push(opt);
+            if (!newExam.eyeConditionsBoth.includes(opt)) newExam.eyeConditionsBoth.push(opt);
           }
         });
       }
@@ -294,28 +346,6 @@ export function PatientEditor({
     });
 
     setExam(newExam);
-  };
-
-  const parseUltrasound = (text: string) => {
-    // Parse ultrasound text
-    const newImaging = { ...imaging };
-    
-    LIVER_OPTIONS.forEach(opt => {
-      if (text.includes(opt)) newImaging.liver = opt;
-    });
-    
-    KIDNEY_OPTIONS.forEach(opt => {
-      if (text.includes(opt)) newImaging.kidney = opt;
-    });
-
-    setImaging(prev => ({ ...prev, ...newImaging }));
-  };
-
-  const parseEcg = (text: string) => {
-    const match = text.match(/Nhịp xoang[:\s]*(\d+)/i);
-    if (match) {
-      setImaging(prev => ({ ...prev, heartRate: match[1] }));
-    }
   };
 
   // Calculate BMI when weight/height changes
@@ -353,25 +383,35 @@ export function PatientEditor({
         bp = exam.bpCondition;
       }
       if (exam.bpNote) bp += (bp ? ', ' : '') + exam.bpNote;
-      if (bp) parts.push(`- Nội khoa: ${bp}`);
+      if (bp) parts.push(` - Nội khoa: ${bp}`);
     }
 
     // Mắt
     if (exam.eyeEnabled) {
       const prefix = exam.hasGlasses ? 'CK ' : '';
       let eyeText = `${prefix}mắt (P) ${exam.visionRight}, mắt (T) ${exam.visionLeft}`;
-      if (exam.eyeConditions.length > 0) {
-        eyeText += `, ${exam.eyeConditions.join(', ')}`;
+      
+      // Bệnh lý 2 mắt
+      if (exam.eyeConditionsBoth.length > 0) {
+        eyeText += `, ${exam.eyeConditionsBoth.join(', ')}`;
+      }
+      // Bệnh lý mắt phải
+      if (exam.eyeConditionsRight.length > 0) {
+        eyeText += `, mắt (P): ${exam.eyeConditionsRight.join(', ')}`;
+      }
+      // Bệnh lý mắt trái
+      if (exam.eyeConditionsLeft.length > 0) {
+        eyeText += `, mắt (T): ${exam.eyeConditionsLeft.join(', ')}`;
       }
       if (exam.eyeNote) eyeText += `, ${exam.eyeNote}`;
-      parts.push(`- Mắt: ${eyeText}`);
+      parts.push(` - Mắt: ${eyeText}`);
     }
 
     // TMH
     if (exam.entEnabled) {
       let tmh = exam.entConditions.length > 0 ? exam.entConditions.join(', ') : '';
       if (exam.entNote) tmh += (tmh ? ', ' : '') + exam.entNote;
-      if (tmh) parts.push(`- TMH: ${tmh}`);
+      if (tmh) parts.push(` - TMH: ${tmh}`);
     }
 
     // RHM
@@ -381,17 +421,17 @@ export function PatientEditor({
         rhm += `, ${exam.dentalConditions.join(', ')}`;
       }
       if (exam.dentalNote) rhm += `, ${exam.dentalNote}`;
-      parts.push(`- RHM: ${rhm}`);
+      parts.push(` - RHM: ${rhm}`);
     }
 
     // Ngoại khoa
     if (exam.surgeryEnabled && exam.surgery && exam.surgery !== 'Bình thường') {
-      parts.push(`- Ngoại khoa: ${exam.surgery}`);
+      parts.push(` - Ngoại khoa: ${exam.surgery}`);
     }
 
     // Da liễu
     if (exam.dermaEnabled && exam.dermatology && exam.dermatology !== 'Bình thường') {
-      parts.push(`- Da liễu: ${exam.dermatology}`);
+      parts.push(` - Da liễu: ${exam.dermatology}`);
     }
 
     return parts.join('\n');
@@ -401,25 +441,33 @@ export function PatientEditor({
   const buildUltrasound = useCallback((): string => {
     const parts: string[] = [];
 
-    // Bụng
+    // Bụng - logic mới: ghép các bệnh lý
     if (imaging.abdomenEnabled) {
-      let abdomenText = imaging.abdomen || 'chưa ghi nhận bất thường';
-      if (imaging.liver && imaging.liver !== 'none') abdomenText = imaging.liver;
-      if (imaging.kidney && imaging.kidney !== 'none') abdomenText = imaging.kidney;
-      if (imaging.liver && imaging.liver !== 'none' && imaging.kidney && imaging.kidney !== 'none') {
-        abdomenText = `${imaging.liver}, ${imaging.kidney}`;
+      const conditions: string[] = [];
+      if (imaging.liverConditions.length > 0) {
+        conditions.push(...imaging.liverConditions);
       }
-      parts.push(`- Siêu âm Bụng: ${abdomenText}`);
+      if (imaging.kidneyConditions.length > 0) {
+        conditions.push(...imaging.kidneyConditions);
+      }
+      if (imaging.abdomenNote) {
+        conditions.push(imaging.abdomenNote);
+      }
+      
+      const abdomenText = conditions.length > 0 
+        ? conditions.join(', ') 
+        : 'chưa ghi nhận bất thường';
+      parts.push(` - Siêu âm Bụng: ${abdomenText}`);
     }
     
     if (imaging.thyroidEnabled) {
-      parts.push(`- Siêu âm Tuyến giáp: ${imaging.thyroid || 'chưa ghi nhận bất thường'}`);
+      parts.push(` - Siêu âm Tuyến giáp: ${imaging.thyroid || 'chưa ghi nhận bất thường'}`);
     }
     if (imaging.breastEnabled) {
-      parts.push(`- Siêu âm Tuyến vú: ${imaging.breast || 'chưa ghi nhận bất thường'}`);
+      parts.push(` - Siêu âm Tuyến vú: ${imaging.breast || 'chưa ghi nhận bất thường'}`);
     }
     if (imaging.gynecologyEnabled) {
-      parts.push(`- Siêu âm Phụ Khoa: ${imaging.gynecology || 'chưa ghi nhận bất thường'}`);
+      parts.push(` - Siêu âm Phụ Khoa: ${imaging.gynecology || 'chưa ghi nhận bất thường'}`);
     }
 
     return parts.join('\n');
@@ -428,10 +476,16 @@ export function PatientEditor({
   // Build ECG text - only if enabled
   const buildEcg = useCallback((): string => {
     if (!imaging.ecgEnabled) return '';
+    const ecgParts: string[] = [];
     if (imaging.heartRate) {
-      return `- Nhịp xoang: ${imaging.heartRate} l/p`;
+      ecgParts.push(`Nhịp xoang: ${imaging.heartRate} l/p`);
+    } else {
+      ecgParts.push('Nhịp xoang đều');
     }
-    return '- Nhịp xoang đều';
+    if (imaging.ecgAxis) {
+      ecgParts.push(imaging.ecgAxis);
+    }
+    return ` - ${ecgParts.join(', ')}`;
   }, [imaging]);
 
   const buildUpdatedPatient = (): PatientData | null => {
@@ -439,6 +493,10 @@ export function PatientEditor({
 
     return {
       ...patient,
+      'CODE': code,
+      'HỌ VÀ TÊN': name,
+      'NS': dob,
+      'GT': gender,
       'Cân nặng': weight ? parseFloat(weight) : '',
       'Chiều cao': height ? parseFloat(height) : '',
       'BMI': bmi ? parseFloat(bmi) : '',
@@ -519,68 +577,97 @@ export function PatientEditor({
           </TabsList>
 
           <div className="flex-1 overflow-auto mt-4">
-            {/* Tab 1: Vital & Classification */}
-            <TabsContent value="vital" className="space-y-6 m-0">
-              <div className="grid grid-cols-2 gap-6">
-                {/* BMI Section */}
-                <div className="space-y-4 p-4 border rounded-lg">
-                  <h3 className="font-semibold text-lg">Tính BMI</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Cân nặng (kg)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={weight}
-                        onChange={(e) => setWeight(e.target.value)}
-                        placeholder="VD: 65"
-                      />
-                    </div>
-                    <div>
-                      <Label>Chiều cao (m)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={height}
-                        onChange={(e) => setHeight(e.target.value)}
-                        placeholder="VD: 1.70"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>BMI</Label>
-                      <Input value={bmi} readOnly className="bg-gray-50" />
-                    </div>
-                    <div>
-                      <Label>Thể trạng</Label>
-                      <div className={`h-10 flex items-center px-3 border rounded-md bg-gray-50 font-medium ${physique.color}`}>
-                        {physique.text || '-'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Classification Section */}
-                <div className="space-y-4 p-4 border rounded-lg">
-                  <h3 className="font-semibold text-lg">Phân loại sức khỏe</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {CLASSIFICATION_OPTIONS.map((opt) => (
-                      <Button
-                        key={opt}
-                        variant={classification === opt ? 'default' : 'outline'}
-                        onClick={() => setClassification(opt)}
-                        className="min-w-[80px]"
-                      >
-                        {opt}
-                      </Button>
-                    ))}
+            {/* Tab 1: Vital - Gọn gàng hơn */}
+            <TabsContent value="vital" className="m-0 space-y-4">
+              {/* Thông tin cơ bản */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <h3 className="font-semibold text-lg">Thông tin cơ bản</h3>
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <Label>CODE</Label>
+                    <Input
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      placeholder="Mã NV"
+                    />
                   </div>
                   <div>
-                    <Label>Kết quả</Label>
-                    <Input value={classification} readOnly className="bg-gray-50 font-medium" />
+                    <Label>Họ và tên</Label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Nguyễn Văn A"
+                    />
+                  </div>
+                  <div>
+                    <Label>Năm sinh</Label>
+                    <Input
+                      value={dob}
+                      onChange={(e) => setDob(e.target.value)}
+                      placeholder="01/01/1990"
+                    />
+                  </div>
+                  <div>
+                    <Label>Giới tính</Label>
+                    <Select value={gender} onValueChange={setGender}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Nam">Nam</SelectItem>
+                        <SelectItem value="Nữ">Nữ</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
+              </div>
+
+              {/* Thể lực */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <h3 className="font-semibold text-lg">Thể lực</h3>
+                <div className="grid grid-cols-4 gap-4 items-end">
+                  <div>
+                    <Label>Cân nặng (kg)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                      placeholder="65"
+                    />
+                  </div>
+                  <div>
+                    <Label>Chiều cao (cm hoặc m)</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      value={height}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        // Nếu nhập >= 100 thì coi là cm, tự chuyển sang m
+                        if (val && parseFloat(val) >= 100) {
+                          setHeight(String((parseFloat(val) / 100).toFixed(2)));
+                        } else {
+                          setHeight(val);
+                        }
+                      }}
+                      placeholder="170 hoặc 1.70"
+                    />
+                  </div>
+                  <div>
+                    <Label>BMI</Label>
+                    <Input value={bmi} readOnly className="bg-gray-50 font-semibold" />
+                  </div>
+                  <div>
+                    <Label>Thể trạng</Label>
+                    <div className={`h-10 flex items-center justify-center px-3 border rounded-md bg-gray-50 font-semibold ${physique.color}`}>
+                      {physique.text || '-'}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  💡 Nhập chiều cao dạng cm (VD: 170) sẽ tự động chuyển thành m (1.70)
+                </p>
               </div>
             </TabsContent>
 
@@ -686,49 +773,116 @@ export function PatientEditor({
                   </label>
                   {exam.eyeEnabled && (
                     <>
-                      <div className="flex gap-4">
-                        <div className="flex-1">
-                          <Label>Mắt trái (T)</Label>
-                          <Select value={exam.visionLeft} onValueChange={(v) => setExam({ ...exam, visionLeft: v })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {VISION_OPTIONS.map(v => (
-                                <SelectItem key={v} value={v}>{v}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex-1">
-                          <Label>Mắt phải (P)</Label>
+                      {/* Thị lực */}
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Mắt phải */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="w-20">Mắt (P)</Label>
+                            <Button
+                              size="sm"
+                              variant={exam.visionRightMode === 'normal' ? 'default' : 'outline'}
+                              onClick={() => setExam({ ...exam, visionRightMode: 'normal', visionRight: '10/10' })}
+                            >
+                              x/10
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={exam.visionRightMode === 'dnt' ? 'default' : 'outline'}
+                              onClick={() => setExam({ ...exam, visionRightMode: 'dnt', visionRight: 'ĐNT 3m' })}
+                            >
+                              ĐNT
+                            </Button>
+                          </div>
                           <Select value={exam.visionRight} onValueChange={(v) => setExam({ ...exam, visionRight: v })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              {VISION_OPTIONS.map(v => (
+                              {(exam.visionRightMode === 'normal' ? VISION_OPTIONS : DNT_OPTIONS).map(v => (
                                 <SelectItem key={v} value={v}>{v}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+                          {/* Bệnh lý mắt phải */}
+                          <div className="flex flex-wrap gap-1">
+                            {EYE_OPTIONS_SINGLE.map((opt) => (
+                              <Button
+                                key={opt}
+                                size="sm"
+                                variant={exam.eyeConditionsRight.includes(opt) ? 'default' : 'outline'}
+                                onClick={() => toggleArrayItem(exam.eyeConditionsRight, opt, (items) => setExam({ ...exam, eyeConditionsRight: items }))}
+                                className="text-xs px-2 py-1 h-7"
+                              >
+                                {opt}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {/* Mắt trái */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="w-20">Mắt (T)</Label>
+                            <Button
+                              size="sm"
+                              variant={exam.visionLeftMode === 'normal' ? 'default' : 'outline'}
+                              onClick={() => setExam({ ...exam, visionLeftMode: 'normal', visionLeft: '10/10' })}
+                            >
+                              x/10
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={exam.visionLeftMode === 'dnt' ? 'default' : 'outline'}
+                              onClick={() => setExam({ ...exam, visionLeftMode: 'dnt', visionLeft: 'ĐNT 3m' })}
+                            >
+                              ĐNT
+                            </Button>
+                          </div>
+                          <Select value={exam.visionLeft} onValueChange={(v) => setExam({ ...exam, visionLeft: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {(exam.visionLeftMode === 'normal' ? VISION_OPTIONS : DNT_OPTIONS).map(v => (
+                                <SelectItem key={v} value={v}>{v}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {/* Bệnh lý mắt trái */}
+                          <div className="flex flex-wrap gap-1">
+                            {EYE_OPTIONS_SINGLE.map((opt) => (
+                              <Button
+                                key={opt}
+                                size="sm"
+                                variant={exam.eyeConditionsLeft.includes(opt) ? 'default' : 'outline'}
+                                onClick={() => toggleArrayItem(exam.eyeConditionsLeft, opt, (items) => setExam({ ...exam, eyeConditionsLeft: items }))}
+                                className="text-xs px-2 py-1 h-7"
+                              >
+                                {opt}
+                              </Button>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <Checkbox
-                          checked={exam.hasGlasses}
-                          onCheckedChange={(checked) => setExam({ ...exam, hasGlasses: !!checked })}
-                        />
-                        <span>Có kính (CK)</span>
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {EYE_OPTIONS.map((opt) => (
+                      
+                      {/* Bệnh lý 2 mắt + Có kính */}
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={exam.hasGlasses}
+                            onCheckedChange={(checked) => setExam({ ...exam, hasGlasses: !!checked })}
+                          />
+                          <span>Có kính (CK)</span>
+                        </label>
+                        {EYE_OPTIONS_BOTH.map((opt) => (
                           <Button
                             key={opt}
                             size="sm"
-                            variant={exam.eyeConditions.includes(opt) ? 'default' : 'outline'}
-                            onClick={() => toggleArrayItem(exam.eyeConditions, opt, (items) => setExam({ ...exam, eyeConditions: items }))}
+                            variant={exam.eyeConditionsBoth.includes(opt) ? 'default' : 'outline'}
+                            onClick={() => toggleArrayItem(exam.eyeConditionsBoth, opt, (items) => setExam({ ...exam, eyeConditionsBoth: items }))}
                           >
                             {opt}
                           </Button>
                         ))}
                       </div>
+                      
                       <Input
                         placeholder="Ghi chú thêm..."
                         value={exam.eyeNote}
@@ -781,16 +935,33 @@ export function PatientEditor({
                   </label>
                   {exam.dentalEnabled && (
                     <>
-                      <div>
-                        <Label>Sức nhai: {exam.chewingPower}%</Label>
-                        <Slider
-                          value={[exam.chewingPower]}
-                          onValueChange={([v]) => setExam({ ...exam, chewingPower: v })}
+                      <div className="flex items-center gap-2">
+                        <Label>Sức nhai:</Label>
+                        <Input
+                          type="number"
                           min={0}
                           max={100}
                           step={5}
-                          className="mt-2"
+                          value={exam.chewingPower}
+                          onChange={(e) => {
+                            const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                            setExam({ ...exam, chewingPower: val });
+                          }}
+                          className="w-20"
                         />
+                        <span>%</span>
+                        {/* Nút chọn nhanh */}
+                        {[100, 80, 60, 40].map(v => (
+                          <Button
+                            key={v}
+                            size="sm"
+                            variant={exam.chewingPower === v ? 'default' : 'outline'}
+                            onClick={() => setExam({ ...exam, chewingPower: v })}
+                            className="px-2"
+                          >
+                            {v}%
+                          </Button>
+                        ))}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {DENTAL_OPTIONS.map((opt) => (
@@ -867,21 +1038,35 @@ export function PatientEditor({
                   </label>
                   {imaging.ecgEnabled && (
                     <>
-                      <div>
-                        <Label>Nhịp tim (l/p)</Label>
-                        <Input
-                          type="number"
-                          value={imaging.heartRate}
-                          onChange={(e) => setImaging({ ...imaging, heartRate: e.target.value })}
-                          placeholder="VD: 75"
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Nhịp tim (l/p)</Label>
+                          <Input
+                            type="number"
+                            value={imaging.heartRate}
+                            onChange={(e) => setImaging({ ...imaging, heartRate: e.target.value })}
+                            placeholder="VD: 75"
+                          />
+                        </div>
+                        <div>
+                          <Label>Trục điện tim</Label>
+                          <Select value={imaging.ecgAxis || 'none'} onValueChange={(v) => setImaging({ ...imaging, ecgAxis: v === 'none' ? '' : v })}>
+                            <SelectTrigger><SelectValue placeholder="Chọn trục..." /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Không ghi</SelectItem>
+                              {ECG_AXIS_OPTIONS.map(v => (
+                                <SelectItem key={v} value={v}>{v}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                       <div>
-                        <Label>Kết quả</Label>
+                        <Label>Ghi chú thêm</Label>
                         <Input
-                          value={imaging.heartRate ? `- Nhịp xoang: ${imaging.heartRate} l/p` : '- Nhịp xoang đều'}
-                          readOnly
-                          className="bg-gray-50"
+                          value={imaging.ecgNote}
+                          onChange={(e) => setImaging({ ...imaging, ecgNote: e.target.value })}
+                          placeholder="Ghi chú thêm về ECG..."
                         />
                       </div>
                     </>
@@ -902,7 +1087,7 @@ export function PatientEditor({
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setImaging({ ...imaging, xray: 'Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang' })}
+                        onClick={() => setImaging({ ...imaging, xray: ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang' })}
                       >
                         Đặt mặc định
                       </Button>
@@ -923,8 +1108,8 @@ export function PatientEditor({
                   <h3 className="font-semibold">Siêu âm</h3>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    {/* Siêu âm bụng */}
-                    <div className={`p-3 border rounded-lg space-y-2 ${imaging.abdomenEnabled ? 'border-blue-400 bg-blue-50/30' : ''}`}>
+                    {/* Siêu âm bụng - UI mới không xung đột */}
+                    <div className={`p-3 border rounded-lg space-y-3 ${imaging.abdomenEnabled ? 'border-blue-400 bg-blue-50/30' : ''}`}>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <Checkbox
                           checked={imaging.abdomenEnabled}
@@ -934,30 +1119,56 @@ export function PatientEditor({
                       </label>
                       {imaging.abdomenEnabled && (
                         <>
+                          {/* Gan */}
+                          <div className="space-y-1">
+                            <Label className="text-sm font-medium">Gan:</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {LIVER_OPTIONS.map((opt) => (
+                                <Button
+                                  key={opt}
+                                  size="sm"
+                                  variant={imaging.liverConditions.includes(opt) ? 'default' : 'outline'}
+                                  onClick={() => toggleArrayItem(imaging.liverConditions, opt, (items) => setImaging({ ...imaging, liverConditions: items }))}
+                                  className="text-xs h-7"
+                                >
+                                  {opt}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Thận */}
+                          <div className="space-y-1">
+                            <Label className="text-sm font-medium">Thận:</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {KIDNEY_OPTIONS.map((opt) => (
+                                <Button
+                                  key={opt}
+                                  size="sm"
+                                  variant={imaging.kidneyConditions.includes(opt) ? 'default' : 'outline'}
+                                  onClick={() => toggleArrayItem(imaging.kidneyConditions, opt, (items) => setImaging({ ...imaging, kidneyConditions: items }))}
+                                  className="text-xs h-7"
+                                >
+                                  {opt}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Ghi chú thêm */}
                           <Input
-                            value={imaging.abdomen}
-                            onChange={(e) => setImaging({ ...imaging, abdomen: e.target.value })}
-                            placeholder="chưa ghi nhận bất thường"
+                            value={imaging.abdomenNote}
+                            onChange={(e) => setImaging({ ...imaging, abdomenNote: e.target.value })}
+                            placeholder="Ghi chú thêm (VD: nang gan, polyp túi mật...)"
                           />
-                          <div className="grid grid-cols-2 gap-2">
-                            <Select value={imaging.liver} onValueChange={(v) => setImaging({ ...imaging, liver: v })}>
-                              <SelectTrigger><SelectValue placeholder="Gan..." /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Không có</SelectItem>
-                                {LIVER_OPTIONS.map(v => (
-                                  <SelectItem key={v} value={v}>{v}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Select value={imaging.kidney} onValueChange={(v) => setImaging({ ...imaging, kidney: v })}>
-                              <SelectTrigger><SelectValue placeholder="Thận..." /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Không có</SelectItem>
-                                {KIDNEY_OPTIONS.map(v => (
-                                  <SelectItem key={v} value={v}>{v}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                          
+                          {/* Hiển thị kết quả */}
+                          <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                            <strong>Kết quả:</strong>{' '}
+                            {imaging.liverConditions.length === 0 && imaging.kidneyConditions.length === 0 && !imaging.abdomenNote
+                              ? 'chưa ghi nhận bất thường'
+                              : [...imaging.liverConditions, ...imaging.kidneyConditions, imaging.abdomenNote].filter(Boolean).join(', ')
+                            }
                           </div>
                         </>
                       )}
@@ -1023,19 +1234,46 @@ export function PatientEditor({
           </div>
         </Tabs>
 
-        <DialogFooter className="flex-shrink-0 mt-4">
-          <Button variant="outline" onClick={onClose}>
-            Hủy
-          </Button>
-          <Button variant="secondary" onClick={handleSave} className="gap-2">
-            <Save className="h-4 w-4" />
-            Lưu
-          </Button>
-          <Button onClick={handleSaveAndClose} className="gap-2">
-            <Save className="h-4 w-4" />
-            Lưu & Đóng
-          </Button>
-        </DialogFooter>
+        {/* Phân loại sức khỏe - Hiển thị ở tất cả các tab */}
+        <div className="flex-shrink-0 border-t pt-3 mt-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="font-semibold text-sm whitespace-nowrap">Phân loại SK:</span>
+              <div className="flex gap-1">
+                {CLASSIFICATION_OPTIONS.map((opt) => (
+                  <Button
+                    key={opt}
+                    size="sm"
+                    variant={classification === opt ? 'default' : 'outline'}
+                    onClick={() => setClassification(opt)}
+                    className="min-w-[40px] h-8"
+                  >
+                    {opt}
+                  </Button>
+                ))}
+              </div>
+              {classification && (
+                <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
+                  Loại {classification}
+                </span>
+              )}
+            </div>
+            
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose} size="sm">
+                Hủy
+              </Button>
+              <Button variant="secondary" onClick={handleSave} size="sm" className="gap-1">
+                <Save className="h-3 w-3" />
+                Lưu
+              </Button>
+              <Button onClick={handleSaveAndClose} size="sm" className="gap-1">
+                <Save className="h-3 w-3" />
+                Lưu & Đóng
+              </Button>
+            </div>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

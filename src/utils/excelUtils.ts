@@ -160,6 +160,9 @@ export async function importExcel(file: File): Promise<ImportResult> {
       
       // Kiểm tra xem dòng này có phải là header của bảng tiếp theo không
       let isNextHeader = false;
+      let isSkipRow = false;
+      const firstCellValue = String(row.getCell(1).value || '').toUpperCase().trim();
+      
       for (let col = 1; col <= Math.min(row.cellCount, 10); col++) {
         const cellValue = String(row.getCell(col).value || '').toUpperCase().trim();
         if (HEADER_KEYWORDS.some(keyword => cellValue.includes(keyword))) {
@@ -167,7 +170,37 @@ export async function importExcel(file: File): Promise<ImportResult> {
           break;
         }
       }
+      
+      // Kiểm tra dòng cần skip:
+      // 1. Dòng tên bảng (chứa "DS " hoặc "DANH SÁCH")
+      // 2. Dòng ghi chú (chứa "LẤY MẪU", "KHÁM TỪ", v.v.)
+      // 3. Dòng có cùng nội dung ở nhiều cột liên tiếp (thường là ghi chú)
+      if (firstCellValue.length > 5) {
+        if (firstCellValue.includes('DS ') || 
+            firstCellValue.includes('DANH SÁCH') ||
+            firstCellValue.includes('LẤY MẪU') ||
+            firstCellValue.includes('KHÁM TỪ') ||
+            firstCellValue.includes('GHI CHÚ')) {
+          isSkipRow = true;
+        }
+        
+        // Kiểm tra nếu nhiều cột có cùng giá trị (dấu hiệu của dòng ghi chú merged)
+        if (!isSkipRow) {
+          let sameValueCount = 0;
+          for (let col = 2; col <= Math.min(row.cellCount, 6); col++) {
+            const cellValue = String(row.getCell(col).value || '').trim();
+            if (cellValue === firstCellValue.toLowerCase() || cellValue.toUpperCase() === firstCellValue) {
+              sameValueCount++;
+            }
+          }
+          if (sameValueCount >= 3) {
+            isSkipRow = true;
+          }
+        }
+      }
+      
       if (isNextHeader) break;
+      if (isSkipRow) continue; // Skip dòng ghi chú/tên bảng
       
       headers.forEach(header => {
         const colNum = columnMapping.get(header);
@@ -189,7 +222,14 @@ export async function importExcel(file: File): Promise<ImportResult> {
             }
           }
           
-          patient[header] = value !== null && value !== undefined ? String(value) : '';
+          // Normalize header để map đúng key chuẩn
+          const normalizedHeader = header.toUpperCase().trim().replace(/\s+/g, ' ');
+          const standardCol = STANDARD_COLUMNS.find(sc => 
+            sc.key.toUpperCase().trim().replace(/\s+/g, ' ') === normalizedHeader
+          );
+          const key = standardCol ? standardCol.key : header;
+          
+          patient[key] = value !== null && value !== undefined ? String(value) : '';
           if (value !== null && value !== undefined && value !== '') {
             hasData = true;
           }
@@ -232,47 +272,52 @@ export async function importExcel(file: File): Promise<ImportResult> {
   ) || headers.length <= 6;
   const isSimpleFormat = hasOnlyBasicColumns && headers.length <= 6;
   
-  // Tạo cấu hình cột
-  const columnSet = new Set(headers.map(h => h.toUpperCase()));
+  // Normalize header để so sánh (loại bỏ dấu cách thừa, chuyển uppercase)
+  const normalizeHeader = (h: string) => h.toUpperCase().trim().replace(/\s+/g, ' ');
+  
+  // Tạo cấu hình cột - sử dụng Set để tránh trùng lặp
+  const columnSet = new Set(headers.map(h => normalizeHeader(h)));
+  const addedKeys = new Set<string>(); // Track các key đã thêm
   const columns: ColumnConfig[] = [];
   
   headers.forEach((header) => {
+    const normalizedHeader = normalizeHeader(header);
+    
+    // Kiểm tra xem đã thêm cột này chưa
+    if (addedKeys.has(normalizedHeader)) {
+      return; // Skip nếu đã có
+    }
+    
     const standardCol = STANDARD_COLUMNS.find(sc => 
-      sc.key.toUpperCase() === header.toUpperCase()
+      normalizeHeader(sc.key) === normalizedHeader
     );
+    
+    // Sử dụng key chuẩn nếu có, nếu không dùng header gốc
+    const key = standardCol ? standardCol.key : header;
+    
     columns.push({
-      key: header,
-      header: header,
+      key: key,
+      header: standardCol ? standardCol.header : header,
       visible: true,
       width: standardCol?.width || 120,
     });
+    
+    addedKeys.add(normalizedHeader);
   });
   
-  // Thêm các cột tiêu chuẩn còn thiếu
-  if (isSimpleFormat) {
-    STANDARD_COLUMNS.forEach(stdCol => {
-      if (!columnSet.has(stdCol.key.toUpperCase())) {
-        columns.push({
-          key: stdCol.key,
-          header: stdCol.header,
-          visible: true,
-          width: stdCol.width,
-        });
-      }
-    });
-  } else {
-    STANDARD_COLUMN_KEYS.forEach(key => {
-      if (!columnSet.has(key.toUpperCase())) {
-        const stdCol = STANDARD_COLUMNS.find(sc => sc.key === key);
-        columns.push({
-          key: key,
-          header: key,
-          visible: true,
-          width: stdCol?.width || 120,
-        });
-      }
-    });
-  }
+  // Thêm các cột tiêu chuẩn còn thiếu (theo thứ tự chuẩn, PHÂN LOẠI SỨC KHỎE cuối cùng)
+  STANDARD_COLUMNS.forEach(stdCol => {
+    const normalizedKey = normalizeHeader(stdCol.key);
+    if (!addedKeys.has(normalizedKey)) {
+      columns.push({
+        key: stdCol.key,
+        header: stdCol.header,
+        visible: true,
+        width: stdCol.width,
+      });
+      addedKeys.add(normalizedKey);
+    }
+  });
   
   return {
     data,
@@ -341,6 +386,17 @@ async function exportWithOriginalFormat(
     }
   });
   
+  // Tìm index cột cho công thức BMI và Thể trạng
+  const weightColIdx = headerToCol.get('CÂN NẶNG');
+  const heightColIdx = headerToCol.get('CHIỀU CAO');
+  const bmiColIdx = headerToCol.get('BMI');
+  const physiqueColIdx = headerToCol.get('THỂ TRẠNG');
+  
+  // Chuyển sang ký tự cột Excel
+  const weightCol = weightColIdx ? getColumnLetter(weightColIdx - 1) : null;
+  const heightCol = heightColIdx ? getColumnLetter(heightColIdx - 1) : null;
+  const bmiCol = bmiColIdx ? getColumnLetter(bmiColIdx - 1) : null;
+  
   // Lấy style mẫu từ dòng dữ liệu đầu tiên (nếu có)
   const templateRow = worksheet.getRow(headerRow + 1);
   const templateStyles = new Map<number, Partial<ExcelJS.Style>>();
@@ -365,8 +421,22 @@ async function exportWithOriginalFormat(
         const existingStyle = cell.style;
         const templateStyle = templateStyles.get(colIndex);
         
-        // Set giá trị
-        if (value !== undefined && value !== null && value !== '') {
+        // Set công thức BMI nếu là cột BMI
+        if (col.key === 'BMI' && weightCol && heightCol) {
+          cell.value = {
+            formula: `IF(OR(${weightCol}${dataRowNum}="",${heightCol}${dataRowNum}=""),"",ROUND(${weightCol}${dataRowNum}/(${heightCol}${dataRowNum}^2),2))`,
+            result: value || undefined
+          };
+        }
+        // Set công thức Thể trạng nếu là cột THỂ TRẠNG
+        else if (col.key === 'THỂ TRẠNG' && bmiCol) {
+          cell.value = {
+            formula: `IF(${bmiCol}${dataRowNum}="","",IF(${bmiCol}${dataRowNum}<18,"Thiếu cân",IF(${bmiCol}${dataRowNum}<=25,"Bình thường","Thừa cân")))`,
+            result: value || undefined
+          };
+        }
+        // Set giá trị bình thường
+        else if (value !== undefined && value !== null && value !== '') {
           cell.value = value;
         } else {
           cell.value = '';
@@ -389,6 +459,29 @@ async function exportWithOriginalFormat(
 }
 
 /**
+ * Tìm index cột theo key (0-based)
+ */
+function findColumnIndex(columns: ColumnConfig[], key: string): number {
+  return columns.findIndex(col => 
+    col.key.toUpperCase() === key.toUpperCase() || 
+    col.header.toUpperCase() === key.toUpperCase()
+  );
+}
+
+/**
+ * Chuyển số cột (0-based) sang ký tự cột Excel (A, B, C, ..., Z, AA, AB, ...)
+ */
+function getColumnLetter(colIndex: number): string {
+  let letter = '';
+  let temp = colIndex;
+  while (temp >= 0) {
+    letter = String.fromCharCode((temp % 26) + 65) + letter;
+    temp = Math.floor(temp / 26) - 1;
+  }
+  return letter;
+}
+
+/**
  * Export file mới (không có file gốc)
  */
 async function exportNewFile(
@@ -398,6 +491,17 @@ async function exportNewFile(
 ): Promise<void> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(PREFERRED_SHEET_NAME);
+  
+  // Tìm index các cột cần thiết cho công thức
+  const weightColIdx = findColumnIndex(visibleColumns, 'Cân nặng');
+  const heightColIdx = findColumnIndex(visibleColumns, 'Chiều cao');
+  const bmiColIdx = findColumnIndex(visibleColumns, 'BMI');
+  const physiqueColIdx = findColumnIndex(visibleColumns, 'THỂ TRẠNG');
+  
+  // Chuyển sang ký tự cột Excel (1-based trong Excel)
+  const weightCol = weightColIdx >= 0 ? getColumnLetter(weightColIdx) : null;
+  const heightCol = heightColIdx >= 0 ? getColumnLetter(heightColIdx) : null;
+  const bmiCol = bmiColIdx >= 0 ? getColumnLetter(bmiColIdx) : null;
   
   // Thêm header
   const headerRow = worksheet.addRow(visibleColumns.map(col => col.header));
@@ -426,9 +530,38 @@ async function exportNewFile(
   });
   
   // Thêm dữ liệu
-  data.forEach((patient) => {
-    const rowData = visibleColumns.map(col => patient[col.key] ?? '');
+  data.forEach((patient, rowIndex) => {
+    const excelRowNum = rowIndex + 2; // +2 vì header ở dòng 1, dữ liệu bắt đầu từ dòng 2
+    const rowData = visibleColumns.map((col, colIndex) => {
+      // Nếu là cột BMI và có cột Cân nặng + Chiều cao -> dùng công thức
+      if (col.key === 'BMI' && weightCol && heightCol) {
+        return null; // Sẽ set công thức sau
+      }
+      // Nếu là cột Thể trạng và có cột BMI -> dùng công thức
+      if (col.key === 'THỂ TRẠNG' && bmiCol) {
+        return null; // Sẽ set công thức sau
+      }
+      return patient[col.key] ?? '';
+    });
     const row = worksheet.addRow(rowData);
+    
+    // Set công thức BMI: =ROUND(CânNặng/(ChiềuCao^2), 2)
+    if (bmiColIdx >= 0 && weightCol && heightCol) {
+      const bmiCell = row.getCell(bmiColIdx + 1);
+      bmiCell.value = {
+        formula: `IF(OR(${weightCol}${excelRowNum}="",${heightCol}${excelRowNum}=""),"",ROUND(${weightCol}${excelRowNum}/(${heightCol}${excelRowNum}^2),2))`,
+        result: patient['BMI'] || undefined
+      };
+    }
+    
+    // Set công thức Thể trạng: =IF(BMI<18,"Thiếu cân",IF(BMI<=25,"Bình thường","Thừa cân"))
+    if (physiqueColIdx >= 0 && bmiCol) {
+      const physiqueCell = row.getCell(physiqueColIdx + 1);
+      physiqueCell.value = {
+        formula: `IF(${bmiCol}${excelRowNum}="","",IF(${bmiCol}${excelRowNum}<18,"Thiếu cân",IF(${bmiCol}${excelRowNum}<=25,"Bình thường","Thừa cân")))`,
+        result: patient['THỂ TRẠNG'] || undefined
+      };
+    }
     
     row.eachCell((cell) => {
       cell.border = {

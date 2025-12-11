@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { PatientData, ColumnConfig } from '@/types/patient';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Edit, Trash2, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
+import { Edit, Trash2, GripVertical, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Plus, MoreHorizontal } from 'lucide-react';
 
 interface PatientTableProps {
   data: PatientData[];
@@ -13,6 +13,8 @@ interface PatientTableProps {
   onDelete: (index: number) => void;
   onColumnToggle: (key: string) => void;
   onColumnReorder: (fromIndex: number, toIndex: number) => void;
+  onMovePatient: (fromIndex: number, toIndex: number) => void;
+  onInsertPatient: (atIndex: number) => void;
   selectedRow: number | null;
   onSelectRow: (index: number | null) => void;
 }
@@ -24,12 +26,15 @@ export function PatientTable({
   onDelete,
   onColumnToggle,
   onColumnReorder,
+  onMovePatient,
+  onInsertPatient,
   selectedRow,
   onSelectRow,
 }: PatientTableProps) {
   const visibleColumns = columns.filter((col) => col.visible);
   const [draggedColumn, setDraggedColumn] = useState<number | null>(null);
   const [showColumnToggle, setShowColumnToggle] = useState(false);
+  const [showActions, setShowActions] = useState(false); // Toggle hiển thị các nút action
   const tableRef = useRef<HTMLDivElement>(null);
   
   // Pan/drag state for scrolling
@@ -127,8 +132,9 @@ export function PatientTable({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Collapsible column visibility toggles */}
-      <div className="mb-1">
+      {/* Header controls */}
+      <div className="mb-1 flex items-center gap-3">
+        {/* Toggle hiển thị cột */}
         <button
           onClick={() => setShowColumnToggle(!showColumnToggle)}
           className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800"
@@ -136,21 +142,30 @@ export function PatientTable({
           {showColumnToggle ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           {showColumnToggle ? 'Ẩn' : 'Hiển thị'} cột ({visibleColumns.length}/{columns.length})
         </button>
-        {showColumnToggle && (
-          <div className="mt-1 p-2 bg-gray-50 rounded border flex flex-wrap gap-2">
-            {columns.map((col) => (
-              <label key={col.key} className="flex items-center gap-1 text-xs cursor-pointer">
-                <Checkbox
-                  checked={col.visible}
-                  onCheckedChange={() => onColumnToggle(col.key)}
-                  className="h-3 w-3"
-                />
-                <span className="text-gray-600">{col.header}</span>
-              </label>
-            ))}
-          </div>
-        )}
+        
+        {/* Toggle thao tác */}
+        <button
+          onClick={() => setShowActions(!showActions)}
+          className={`flex items-center gap-1 text-xs ${showActions ? 'text-emerald-700 font-medium' : 'text-gray-500 hover:text-emerald-600'}`}
+        >
+          <MoreHorizontal className="h-3 w-3" />
+          {showActions ? 'Ẩn thao tác' : 'Thao tác'}
+        </button>
       </div>
+      {showColumnToggle && (
+        <div className="mb-1 p-2 bg-gray-50 rounded border flex flex-wrap gap-2">
+          {columns.map((col) => (
+            <label key={col.key} className="flex items-center gap-1 text-xs cursor-pointer">
+              <Checkbox
+                checked={col.visible}
+                onCheckedChange={() => onColumnToggle(col.key)}
+                className="h-3 w-3"
+              />
+              <span className="text-gray-600">{col.header}</span>
+            </label>
+          ))}
+        </div>
+      )}
 
       {/* Table */}
       <div 
@@ -165,9 +180,11 @@ export function PatientTable({
         <table className="w-full border-collapse min-w-max text-xs">
           <thead className="bg-emerald-600 text-white sticky top-0 z-10">
             <tr>
-              <th className="px-1 py-1 text-center font-medium border-r border-emerald-500 w-14 sticky left-0 bg-emerald-600 z-20">
-                #
-              </th>
+              {showActions && (
+                <th className="px-1 py-1 text-center font-medium border-r border-emerald-500 sticky left-0 bg-emerald-600 z-20 w-24">
+                  Thao tác
+                </th>
+              )}
               {visibleColumns.map((col, idx) => (
                 <th
                   key={col.key}
@@ -219,31 +236,63 @@ export function PatientTable({
                       onClick={() => onSelectRow(selectedRow === index ? null : index)}
                       onDoubleClick={() => onEdit(index)}
                     >
-                  {/* Row number + action buttons */}
-                  <td className="px-1 py-0.5 text-center border-r sticky left-0 bg-inherit z-10">
-                    <div className="flex items-center justify-center gap-0.5">
-                      <span className="text-gray-400 w-4">{index + 1}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-emerald-600 hover:bg-emerald-100"
-                        onClick={(e) => { e.stopPropagation(); onEdit(index); }}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-red-500 hover:bg-red-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Xóa bệnh nhân này?')) onDelete(index);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </td>
+                  {/* Action buttons - chỉ hiển thị khi showActions */}
+                  {showActions && (
+                    <td className="px-1 py-0.5 text-center border-r sticky left-0 bg-inherit z-10 w-24">
+                      <div className="flex items-center justify-center gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-gray-500 hover:bg-gray-100"
+                          onClick={(e) => { e.stopPropagation(); onMovePatient(index, index - 1); }}
+                          disabled={index === 0}
+                          title="Di chuyển lên"
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-gray-500 hover:bg-gray-100"
+                          onClick={(e) => { e.stopPropagation(); onMovePatient(index, index + 1); }}
+                          disabled={index === data.length - 1}
+                          title="Di chuyển xuống"
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-blue-500 hover:bg-blue-100"
+                          onClick={(e) => { e.stopPropagation(); onInsertPatient(index); }}
+                          title="Chèn BN mới"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-emerald-600 hover:bg-emerald-100"
+                          onClick={(e) => { e.stopPropagation(); onEdit(index); }}
+                          title="Sửa"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-red-500 hover:bg-red-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Xóa bệnh nhân này?')) onDelete(index);
+                          }}
+                          title="Xóa"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </td>
+                  )}
                   {visibleColumns.map((col) => {
                     // Giới hạn chiều ngang theo loại cột
                     const maxWidth = col.key.includes('KHÁM') || col.key.includes('Siêu âm') || col.key.includes('Xquang') 

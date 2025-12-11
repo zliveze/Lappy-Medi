@@ -6,7 +6,7 @@ import { importExcel, exportExcel, resetOriginalFileInfo } from '@/utils/excelUt
 import { PatientTable } from '@/components/PatientTable';
 import { PatientEditor } from '@/components/PatientEditor';
 import { Button } from '@/components/ui/button';
-import { Upload, Download, Plus, FileSpreadsheet, Database, PlusCircle, X, Save, RefreshCw } from 'lucide-react';
+import { Upload, Download, Plus, Database, PlusCircle, X, Save, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 // Sample data matching the provided format
@@ -402,6 +402,59 @@ export default function Home() {
     setIsEditorOpen(true);
   }, [patients.length]);
 
+  // Move patient position
+  const handleMovePatient = useCallback((fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= patients.length) return;
+    setPatients(prev => {
+      const newPatients = [...prev];
+      const [removed] = newPatients.splice(fromIndex, 1);
+      newPatients.splice(toIndex, 0, removed);
+      return newPatients;
+    });
+    // Update selected row to follow the moved patient
+    if (selectedRow === fromIndex) {
+      setSelectedRow(toIndex);
+    } else if (selectedRow !== null) {
+      if (fromIndex < selectedRow && toIndex >= selectedRow) {
+        setSelectedRow(selectedRow - 1);
+      } else if (fromIndex > selectedRow && toIndex <= selectedRow) {
+        setSelectedRow(selectedRow + 1);
+      }
+    }
+    showToast(`✅ Đã di chuyển bệnh nhân`);
+  }, [patients.length, selectedRow, showToast]);
+
+  // Insert new patient at specific position
+  const handleInsertPatient = useCallback((atIndex: number) => {
+    // Kế thừa _tableName từ BN ở vị trí chèn (nếu có)
+    const existingPatient = patients[atIndex];
+    const tableName = existingPatient?.['_tableName'] || '';
+    
+    const newPatient: PatientData = {
+      CODE: '',
+      'HỌ VÀ TÊN': '',
+      NS: '',
+      GT: '',
+      'Cân nặng': '',
+      'Chiều cao': '',
+      BMI: '',
+      'THỂ TRẠNG': '',
+      'KHÁM TỔNG QUÁT': '',
+      'PHÂN LOẠI SỨC KHỎE': '',
+      Xquang: '',
+      'Siêu âm': '',
+      'Điện tim': '',
+      ...(tableName ? { '_tableName': tableName } : {}),
+    };
+    setPatients(prev => {
+      const newPatients = [...prev];
+      newPatients.splice(atIndex, 0, newPatient);
+      return newPatients;
+    });
+    setEditingIndex(atIndex);
+    setIsEditorOpen(true);
+  }, [patients]);
+
   return (
     <main className="min-h-screen bg-emerald-50/30">
       {/* Compact Header */}
@@ -409,8 +462,8 @@ export default function Home() {
         <div className="w-full px-3 py-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileSpreadsheet className="h-6 w-6 text-emerald-600" />
-              <h1 className="text-lg font-bold text-gray-900">MediExcel</h1>
+              <img src="/img/kay.jpg" alt="Lappy Medi Logo" className="h-8 w-8 rounded-full object-cover" />
+              <h1 className="text-lg font-bold text-gray-900">Lappy Medi</h1>
               {fileName && (
                 <>
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
@@ -556,6 +609,8 @@ export default function Home() {
             onDelete={handleDelete}
             onColumnToggle={handleColumnToggle}
             onColumnReorder={handleColumnReorder}
+            onMovePatient={handleMovePatient}
+            onInsertPatient={handleInsertPatient}
             selectedRow={selectedRow}
             onSelectRow={setSelectedRow}
           />
