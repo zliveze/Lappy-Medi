@@ -100,6 +100,9 @@ export function PatientEditor({
   currentIndex,
   totalCount,
 }: PatientEditorProps) {
+  // Tab state - reset về vital khi chuyển bệnh nhân
+  const [activeTab, setActiveTab] = useState('vital');
+  
   // Basic info - Thông tin cơ bản
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -143,7 +146,7 @@ export function PatientEditor({
     dermatology: 'Bình thường',
   });
 
-  // Imaging state
+  // Imaging state - mặc định để trống, chỉ hiển thị text mặc định khi build
   const [imaging, setImaging] = useState<ImagingState>({
     xrayEnabled: false,
     xray: '',
@@ -152,20 +155,30 @@ export function PatientEditor({
     kidneyConditions: [],
     abdomenNote: '',
     thyroidEnabled: false,
-    thyroid: 'chưa ghi nhận bất thường',
+    thyroid: '',
     breastEnabled: false,
-    breast: 'chưa ghi nhận bất thường',
+    breast: '',
     gynecologyEnabled: false,
-    gynecology: 'chưa ghi nhận bất thường',
+    gynecology: '',
     ecgEnabled: false,
     heartRate: '',
     ecgAxis: '',
     ecgNote: '',
   });
 
+  // Theo dõi patient ID trước đó để biết khi nào chuyển bệnh nhân mới
+  const prevPatientIdRef = React.useRef<string | undefined>();
+  
   // Parse existing data when patient changes
   useEffect(() => {
     if (patient) {
+      // Chỉ reset về tab thể lực khi chuyển sang bệnh nhân MỚI (khác CODE)
+      const currentPatientId = String(patient['CODE'] || '');
+      if (prevPatientIdRef.current !== undefined && prevPatientIdRef.current !== currentPatientId) {
+        setActiveTab('vital');
+      }
+      prevPatientIdRef.current = currentPatientId;
+      
       // Basic info - Thông tin cơ bản
       setCode(String(patient['CODE'] || ''));
       setName(String(patient['HỌ VÀ TÊN'] || patient['HỌ TÊN'] || ''));
@@ -214,6 +227,33 @@ export function PatientEditor({
         if (ultrasoundText.includes(opt)) parsedKidneyConditions.push(opt);
       });
       
+      // Parse nội dung siêu âm từng loại
+      const parseUltrasoundSection = (text: string, sectionName: string): string => {
+        const regex = new RegExp(`-\\s*Siêu âm\\s*${sectionName}:\\s*(.+?)(?=\\n|$)`, 'i');
+        const match = text.match(regex);
+        if (match) {
+          const content = match[1].trim();
+          // Nếu là text mặc định thì trả về rỗng
+          if (content.toLowerCase().includes('chưa ghi nhận bất thường') || 
+              content.toLowerCase().includes('chưa phát hiện bất thường') ||
+              content.toLowerCase().includes('không tổn thương')) {
+            return '';
+          }
+          return content;
+        }
+        return '';
+      };
+      
+      // Parse abdomen note (loại bỏ các bệnh lý gan/thận đã parse)
+      let parsedAbdomenNote = parseUltrasoundSection(ultrasoundText, 'Bụng');
+      [...parsedLiverConditions, ...parsedKidneyConditions].forEach(cond => {
+        parsedAbdomenNote = parsedAbdomenNote.replace(cond, '').replace(/,\s*,/g, ',').replace(/^,\s*|,\s*$/g, '').trim();
+      });
+      
+      const parsedThyroid = parseUltrasoundSection(ultrasoundText, 'Tuyến giáp');
+      const parsedBreast = parseUltrasoundSection(ultrasoundText, 'Tuyến vú');
+      const parsedGynecology = parseUltrasoundSection(ultrasoundText, 'Phụ Khoa');
+      
       // Parse ECG axis
       let parsedEcgAxis = '';
       ECG_AXIS_OPTIONS.forEach(opt => {
@@ -230,17 +270,17 @@ export function PatientEditor({
         abdomenEnabled: hasAbdomen,
         liverConditions: parsedLiverConditions,
         kidneyConditions: parsedKidneyConditions,
-        abdomenNote: '',
+        abdomenNote: parsedAbdomenNote,
         thyroidEnabled: hasThyroid,
-        thyroid: 'chưa ghi nhận bất thường',
+        thyroid: parsedThyroid,
         breastEnabled: hasBreast,
-        breast: 'chưa ghi nhận bất thường',
+        breast: parsedBreast,
         gynecologyEnabled: hasGynecology,
-        gynecology: 'chưa ghi nhận bất thường',
+        gynecology: parsedGynecology,
         ecgEnabled: !!ecgText,
         heartRate: parsedHeartRate,
         ecgAxis: parsedEcgAxis,
-        ecgNote: ecgText,
+        ecgNote: '',
       });
     }
   }, [patient]);
@@ -306,6 +346,13 @@ export function PatientEditor({
         BLOOD_PRESSURE_OPTIONS.forEach(opt => {
           if (line.toLowerCase().includes(opt.toLowerCase())) newExam.bpCondition = opt;
         });
+        // Parse ghi chú nội khoa - phần text sau các thông tin đã parse
+        let noteText = line.replace(/^.*?:/, '').trim();
+        BLOOD_PRESSURE_OPTIONS.forEach(opt => {
+          noteText = noteText.replace(new RegExp(opt, 'gi'), '');
+        });
+        noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '').replace(/\([^)]*\)/g, '').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+        if (noteText && noteText !== 'Bình thường') newExam.bpNote = noteText;
       }
       
       // Parse Mắt
@@ -331,6 +378,13 @@ export function PatientEditor({
             if (!newExam.eyeConditionsBoth.includes(opt)) newExam.eyeConditionsBoth.push(opt);
           }
         });
+        
+        // Parse ghi chú mắt - loại bỏ các thông tin đã parse
+        let eyeNote = line.replace(/^.*?:/, '').trim();
+        eyeNote = eyeNote.replace(/CK\s*/gi, '').replace(/mắt\s*\([PT]\)\s*\d+\/\d+/gi, '').replace(/mắt\s*\([PT]\)\s*ĐNT\s*\d+m/gi, '');
+        EYE_OPTIONS_BOTH.forEach(opt => { eyeNote = eyeNote.replace(new RegExp(opt, 'gi'), ''); });
+        eyeNote = eyeNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+        if (eyeNote) newExam.eyeNote = eyeNote;
       }
       
       // Parse TMH
@@ -341,6 +395,11 @@ export function PatientEditor({
             if (!newExam.entConditions.includes(opt)) newExam.entConditions.push(opt);
           }
         });
+        // Parse ghi chú TMH
+        let entNote = line.replace(/^.*?:/, '').trim();
+        ENT_OPTIONS.forEach(opt => { entNote = entNote.replace(new RegExp(opt, 'gi'), ''); });
+        entNote = entNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+        if (entNote && entNote !== 'Bình thường') newExam.entNote = entNote;
       }
       
       // Parse RHM
@@ -353,6 +412,26 @@ export function PatientEditor({
             if (!newExam.dentalConditions.includes(opt)) newExam.dentalConditions.push(opt);
           }
         });
+        // Parse ghi chú RHM
+        let dentalNote = line.replace(/^.*?:/, '').trim();
+        dentalNote = dentalNote.replace(/sức nhai\s*\d+%/gi, '');
+        DENTAL_OPTIONS.forEach(opt => { dentalNote = dentalNote.replace(new RegExp(opt, 'gi'), ''); });
+        dentalNote = dentalNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+        if (dentalNote && dentalNote !== 'Bình thường') newExam.dentalNote = dentalNote;
+      }
+      
+      // Parse Ngoại khoa
+      if (lowerLine.includes('ngoại khoa')) {
+        newExam.surgeryEnabled = true;
+        const surgeryText = line.replace(/^.*?:/, '').trim();
+        if (surgeryText) newExam.surgery = surgeryText;
+      }
+      
+      // Parse Da liễu
+      if (lowerLine.includes('da liễu')) {
+        newExam.dermaEnabled = true;
+        const dermaText = line.replace(/^.*?:/, '').trim();
+        if (dermaText) newExam.dermatology = dermaText;
       }
     });
 
@@ -454,8 +533,19 @@ export function PatientEditor({
   }, [exam]);
 
   // Build ultrasound text - only include enabled types
+  // Mặc định theo format yêu cầu:
+  // - Siêu âm Tuyến vú: không tổn thương khu trú trên siêu âm tuyến vú
+  // - Siêu âm Bụng: chưa phát hiện bất thường
+  // - Siêu âm Phụ Khoa: chưa phát hiện bất thường
+  // - Siêu âm tuyến giáp: chưa phát hiện bất thường
   const buildUltrasound = useCallback((): string => {
     const parts: string[] = [];
+
+    // Tuyến vú - đặt trước theo thứ tự yêu cầu
+    if (imaging.breastEnabled) {
+      const defaultBreast = 'không tổn thương khu trú trên siêu âm tuyến vú';
+      parts.push(` - Siêu âm Tuyến vú: ${imaging.breast || defaultBreast}`);
+    }
 
     // Bụng - logic mới: ghép các bệnh lý
     if (imaging.abdomenEnabled) {
@@ -472,18 +562,18 @@ export function PatientEditor({
       
       const abdomenText = conditions.length > 0 
         ? conditions.join(', ') 
-        : 'chưa ghi nhận bất thường';
+        : 'chưa phát hiện bất thường';
       parts.push(` - Siêu âm Bụng: ${abdomenText}`);
     }
-    
-    if (imaging.thyroidEnabled) {
-      parts.push(` - Siêu âm Tuyến giáp: ${imaging.thyroid || 'chưa ghi nhận bất thường'}`);
-    }
-    if (imaging.breastEnabled) {
-      parts.push(` - Siêu âm Tuyến vú: ${imaging.breast || 'chưa ghi nhận bất thường'}`);
-    }
+
+    // Phụ Khoa
     if (imaging.gynecologyEnabled) {
-      parts.push(` - Siêu âm Phụ Khoa: ${imaging.gynecology || 'chưa ghi nhận bất thường'}`);
+      parts.push(` - Siêu âm Phụ Khoa: ${imaging.gynecology || 'chưa phát hiện bất thường'}`);
+    }
+    
+    // Tuyến giáp
+    if (imaging.thyroidEnabled) {
+      parts.push(` - Siêu âm tuyến giáp: ${imaging.thyroid || 'chưa phát hiện bất thường'}`);
     }
 
     return parts.join('\n');
@@ -585,7 +675,7 @@ export function PatientEditor({
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="vital" className="flex-1 overflow-hidden flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
           <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
             <TabsTrigger value="vital">Thể Lực & Phân Loại</TabsTrigger>
             <TabsTrigger value="exam">Khám Tổng Quát</TabsTrigger>
@@ -963,33 +1053,37 @@ export function PatientEditor({
                   </label>
                   {exam.dentalEnabled && (
                     <>
-                      <div className="flex items-center gap-2">
-                        <Label>Sức nhai:</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={5}
-                          value={exam.chewingPower}
-                          onChange={(e) => {
-                            const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                            setExam({ ...exam, chewingPower: val });
-                          }}
-                          className="w-20"
-                        />
-                        <span>%</span>
-                        {/* Nút chọn nhanh */}
-                        {[100, 80, 60, 40].map(v => (
-                          <Button
-                            key={v}
-                            size="sm"
-                            variant={exam.chewingPower === v ? 'default' : 'outline'}
-                            onClick={() => setExam({ ...exam, chewingPower: v })}
-                            className="px-2"
-                          >
-                            {v}%
-                          </Button>
-                        ))}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Label>Sức nhai:</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={exam.chewingPower}
+                            onChange={(e) => {
+                              const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                              setExam({ ...exam, chewingPower: val });
+                            }}
+                            className="w-20"
+                          />
+                          <span>%</span>
+                        </div>
+                        {/* Nút chọn nhanh - xuống dòng riêng */}
+                        <div className="flex flex-wrap gap-1">
+                          {[100, 95, 94, 90, 85, 80, 75, 70].map(v => (
+                            <Button
+                              key={v}
+                              size="sm"
+                              variant={exam.chewingPower === v ? 'default' : 'outline'}
+                              onClick={() => setExam({ ...exam, chewingPower: v })}
+                              className="px-2 h-7"
+                            >
+                              {v}%
+                            </Button>
+                          ))}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {DENTAL_OPTIONS.map((opt) => (

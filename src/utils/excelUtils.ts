@@ -6,6 +6,14 @@ const HEADER_KEYWORDS = ['CODE', 'HỌ VÀ TÊN'];
 const PREFERRED_SHEET_NAME = 'DS';
 const MAX_HEADER_SCAN_ROWS = 20;
 
+// Thông tin về 1 bảng trong sheet
+export interface TableInfo {
+  tableName: string;
+  headerRow: number;
+  dataStartRow: number; // headerRow + 1
+  dataEndRow: number;   // Dòng cuối của bảng (trước bảng tiếp theo hoặc cuối sheet)
+}
+
 // Lưu trữ thông tin file gốc để giữ format khi export
 export interface OriginalFileInfo {
   workbook: ExcelJS.Workbook;
@@ -13,9 +21,109 @@ export interface OriginalFileInfo {
   headerRow: number;
   originalHeaders: string[];
   columnMapping: Map<string, number>; // header -> column index (1-based)
+  fileName: string; // Tên file gốc
+  tables: TableInfo[]; // Thông tin về các bảng trong sheet
 }
 
 let originalFileInfo: OriginalFileInfo | null = null;
+
+// Lưu trữ workbook buffer trong IndexedDB để có thể khôi phục
+const WORKBOOK_DB_NAME = 'MediExcelDB';
+const WORKBOOK_STORE_NAME = 'workbooks';
+const WORKBOOK_KEY = 'originalWorkbook';
+
+async function saveWorkbookToIndexedDB(buffer: ArrayBuffer, sheetName: string, headerRow: number, headers: string[], columnMapping: Map<string, number>, fileName: string, tables: TableInfo[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(WORKBOOK_DB_NAME, 1);
+    request.onerror = () => reject(request.error);
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(WORKBOOK_STORE_NAME)) {
+        db.createObjectStore(WORKBOOK_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction(WORKBOOK_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(WORKBOOK_STORE_NAME);
+      // Chuyển Map thành object để lưu
+      const mappingObj: Record<string, number> = {};
+      columnMapping.forEach((v, k) => { mappingObj[k] = v; });
+      store.put({
+        buffer,
+        sheetName,
+        headerRow,
+        headers,
+        columnMapping: mappingObj,
+        fileName,
+        tables,
+        savedAt: new Date().toISOString()
+      }, WORKBOOK_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+}
+
+async function loadWorkbookFromIndexedDB(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const request = indexedDB.open(WORKBOOK_DB_NAME, 1);
+    request.onerror = () => resolve(false);
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(WORKBOOK_STORE_NAME)) {
+        db.createObjectStore(WORKBOOK_STORE_NAME);
+      }
+    };
+    request.onsuccess = async () => {
+      try {
+        const db = request.result;
+        const tx = db.transaction(WORKBOOK_STORE_NAME, 'readonly');
+        const store = tx.objectStore(WORKBOOK_STORE_NAME);
+        const getRequest = store.get(WORKBOOK_KEY);
+        getRequest.onsuccess = async () => {
+          const data = getRequest.result;
+          if (data && data.buffer) {
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(data.buffer);
+            // Khôi phục columnMapping từ object
+            const columnMapping = new Map<string, number>();
+            Object.entries(data.columnMapping).forEach(([k, v]) => {
+              columnMapping.set(k, v as number);
+            });
+            originalFileInfo = {
+              workbook,
+              sheetName: data.sheetName,
+              headerRow: data.headerRow,
+              originalHeaders: data.headers,
+              columnMapping,
+              fileName: data.fileName,
+              tables: data.tables || [],
+            };
+            console.log('Restored workbook from IndexedDB:', data.fileName);
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        };
+        getRequest.onerror = () => resolve(false);
+      } catch (e) {
+        console.error('Error loading workbook from IndexedDB:', e);
+        resolve(false);
+      }
+    };
+  });
+}
+
+// Export để có thể gọi từ page
+export async function restoreOriginalWorkbook(): Promise<boolean> {
+  if (originalFileInfo) return true;
+  return await loadWorkbookFromIndexedDB();
+}
+
+export function hasOriginalWorkbook(): boolean {
+  return originalFileInfo !== null;
+}
 
 export interface TableGroup {
   tableName: string;  // Tên bảng/công ty
@@ -256,6 +364,17 @@ export async function importExcel(file: File): Promise<ImportResult> {
     }
   }
   
+  // Tạo danh sách TableInfo từ allTables
+  const tableInfos: TableInfo[] = allTables.map((table, idx) => {
+    const nextTable = allTables[idx + 1];
+    return {
+      tableName: table.tableName,
+      headerRow: table.headerRow,
+      dataStartRow: table.headerRow + 1,
+      dataEndRow: nextTable ? nextTable.headerRow - 1 : worksheet.rowCount,
+    };
+  });
+  
   // Lưu thông tin file gốc
   originalFileInfo = {
     workbook,
@@ -263,7 +382,26 @@ export async function importExcel(file: File): Promise<ImportResult> {
     headerRow,
     originalHeaders: headers,
     columnMapping,
+    fileName: file.name,
+    tables: tableInfos,
   };
+  
+  // Lưu workbook vào IndexedDB để có thể khôi phục sau refresh
+  try {
+    const bufferToSave = await workbook.xlsx.writeBuffer();
+    await saveWorkbookToIndexedDB(
+      bufferToSave as ArrayBuffer,
+      sheetName,
+      headerRow,
+      headers,
+      columnMapping,
+      file.name,
+      tableInfos
+    );
+    console.log('Saved workbook to IndexedDB:', file.name, 'tables:', tableInfos.length);
+  } catch (e) {
+    console.error('Error saving workbook to IndexedDB:', e);
+  }
   
   // Kiểm tra file đơn giản
   const basicColumns = ['CODE', 'HỌ VÀ TÊN', 'NS', 'GT'];
@@ -334,19 +472,30 @@ export async function importExcel(file: File): Promise<ImportResult> {
 export async function exportExcel(
   data: PatientData[],
   columns: ColumnConfig[],
-  fileName: string = 'Ket_Qua_Kham.xlsx'
+  fileName?: string
 ): Promise<void> {
   const visibleColumns = columns.filter(col => col.visible);
   
+  // Ưu tiên: fileName truyền vào > originalFileInfo.fileName > mặc định
+  let exportFileName = fileName || (originalFileInfo?.fileName) || 'Ket_Qua_Kham.xlsx';
+  
+  // Đảm bảo có đuôi .xlsx
+  if (!exportFileName.toLowerCase().endsWith('.xlsx') && !exportFileName.toLowerCase().endsWith('.xls')) {
+    exportFileName += '.xlsx';
+  }
+  
+  console.log('Export with fileName:', exportFileName, 'originalFileInfo:', !!originalFileInfo);
+  
   if (originalFileInfo) {
-    await exportWithOriginalFormat(data, visibleColumns, fileName);
+    await exportWithOriginalFormat(data, visibleColumns, exportFileName);
   } else {
-    await exportNewFile(data, visibleColumns, fileName);
+    await exportNewFile(data, visibleColumns, exportFileName);
   }
 }
 
 /**
  * Export với format file gốc - GIỮ NGUYÊN MÀU SẮC VÀ STYLE
+ * Hỗ trợ nhiều bảng trong cùng sheet
  */
 async function exportWithOriginalFormat(
   data: PatientData[],
@@ -355,7 +504,13 @@ async function exportWithOriginalFormat(
 ): Promise<void> {
   if (!originalFileInfo) return;
   
-  const { workbook, sheetName, headerRow, columnMapping } = originalFileInfo;
+  const { workbook: originalWorkbook, sheetName, columnMapping, tables } = originalFileInfo;
+  
+  // Clone workbook để không ảnh hưởng đến bản gốc
+  const cloneBuffer = await originalWorkbook.xlsx.writeBuffer();
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(cloneBuffer);
+  
   const worksheet = workbook.getWorksheet(sheetName);
   if (!worksheet) return;
   
@@ -368,87 +523,106 @@ async function exportWithOriginalFormat(
   // Tìm cột cuối cùng
   let lastCol = Math.max(...Array.from(columnMapping.values()));
   
-  // Thêm các cột mới vào cuối
-  visibleColumns.forEach(col => {
-    if (!headerToCol.has(col.key.toUpperCase())) {
-      lastCol++;
-      headerToCol.set(col.key.toUpperCase(), lastCol);
-      
-      // Thêm header cho cột mới
-      const headerCell = worksheet.getRow(headerRow).getCell(lastCol);
-      headerCell.value = col.header;
-      
-      // Copy style từ cột header đầu tiên
-      const firstHeaderCell = worksheet.getRow(headerRow).getCell(1);
-      if (firstHeaderCell.style) {
-        headerCell.style = { ...firstHeaderCell.style };
+  // Thêm các cột mới vào header của TẤT CẢ các bảng
+  tables.forEach(table => {
+    visibleColumns.forEach(col => {
+      if (!headerToCol.has(col.key.toUpperCase())) {
+        lastCol++;
+        headerToCol.set(col.key.toUpperCase(), lastCol);
       }
-    }
+      // Thêm header cho cột mới vào mỗi bảng
+      const colIdx = headerToCol.get(col.key.toUpperCase());
+      if (colIdx) {
+        const headerCell = worksheet.getRow(table.headerRow).getCell(colIdx);
+        if (!headerCell.value) {
+          headerCell.value = col.header;
+          // Copy style từ cột header đầu tiên của bảng đó
+          const firstHeaderCell = worksheet.getRow(table.headerRow).getCell(1);
+          if (firstHeaderCell.style) {
+            headerCell.style = { ...firstHeaderCell.style };
+          }
+        }
+      }
+    });
   });
   
   // Tìm index cột cho công thức BMI và Thể trạng
   const weightColIdx = headerToCol.get('CÂN NẶNG');
   const heightColIdx = headerToCol.get('CHIỀU CAO');
   const bmiColIdx = headerToCol.get('BMI');
-  const physiqueColIdx = headerToCol.get('THỂ TRẠNG');
   
   // Chuyển sang ký tự cột Excel
   const weightCol = weightColIdx ? getColumnLetter(weightColIdx - 1) : null;
   const heightCol = heightColIdx ? getColumnLetter(heightColIdx - 1) : null;
   const bmiCol = bmiColIdx ? getColumnLetter(bmiColIdx - 1) : null;
   
-  // Lấy style mẫu từ dòng dữ liệu đầu tiên (nếu có)
-  const templateRow = worksheet.getRow(headerRow + 1);
-  const templateStyles = new Map<number, Partial<ExcelJS.Style>>();
-  templateRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-    if (cell.style) {
-      templateStyles.set(colNumber, { ...cell.style });
+  // Nhóm dữ liệu theo bảng (dựa trên _tableName)
+  const dataByTable = new Map<string, PatientData[]>();
+  data.forEach(patient => {
+    const tableName = String(patient['_tableName'] || tables[0]?.tableName || '');
+    if (!dataByTable.has(tableName)) {
+      dataByTable.set(tableName, []);
     }
+    dataByTable.get(tableName)!.push(patient);
   });
   
-  // Ghi dữ liệu bệnh nhân
-  data.forEach((patient, rowIndex) => {
-    const dataRowNum = headerRow + 1 + rowIndex;
-    const row = worksheet.getRow(dataRowNum);
+  // Ghi dữ liệu cho từng bảng
+  tables.forEach(table => {
+    const tableData = dataByTable.get(table.tableName) || [];
     
-    visibleColumns.forEach(col => {
-      const colIndex = headerToCol.get(col.key.toUpperCase());
-      if (colIndex !== undefined) {
-        const cell = row.getCell(colIndex);
-        const value = patient[col.key];
-        
-        // Giữ nguyên style cũ hoặc dùng template style
-        const existingStyle = cell.style;
-        const templateStyle = templateStyles.get(colIndex);
-        
-        // Set công thức BMI nếu là cột BMI
-        if (col.key === 'BMI' && weightCol && heightCol) {
-          cell.value = {
-            formula: `IF(OR(${weightCol}${dataRowNum}="",${heightCol}${dataRowNum}=""),"",ROUND(${weightCol}${dataRowNum}/(${heightCol}${dataRowNum}^2),2))`,
-            result: value || undefined
-          };
-        }
-        // Set công thức Thể trạng nếu là cột THỂ TRẠNG
-        else if (col.key === 'THỂ TRẠNG' && bmiCol) {
-          cell.value = {
-            formula: `IF(${bmiCol}${dataRowNum}="","",IF(${bmiCol}${dataRowNum}<18,"Thiếu cân",IF(${bmiCol}${dataRowNum}<=25,"Bình thường","Thừa cân")))`,
-            result: value || undefined
-          };
-        }
-        // Set giá trị bình thường
-        else if (value !== undefined && value !== null && value !== '') {
-          cell.value = value;
-        } else {
-          cell.value = '';
-        }
-        
-        // Giữ style (uu tiên style hiện có, nếu không thì dùng template)
-        if (existingStyle && Object.keys(existingStyle).length > 0) {
-          cell.style = existingStyle;
-        } else if (templateStyle) {
-          cell.style = templateStyle;
-        }
+    // Lấy style mẫu từ dòng dữ liệu đầu tiên của bảng này
+    const templateRow = worksheet.getRow(table.dataStartRow);
+    const templateStyles = new Map<number, Partial<ExcelJS.Style>>();
+    templateRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      if (cell.style) {
+        templateStyles.set(colNumber, { ...cell.style });
       }
+    });
+    
+    // Ghi dữ liệu bệnh nhân vào đúng vị trí của bảng
+    tableData.forEach((patient, rowIndex) => {
+      const dataRowNum = table.dataStartRow + rowIndex;
+      const row = worksheet.getRow(dataRowNum);
+      
+      visibleColumns.forEach(col => {
+        const colIndex = headerToCol.get(col.key.toUpperCase());
+        if (colIndex !== undefined) {
+          const cell = row.getCell(colIndex);
+          const value = patient[col.key];
+          
+          // Giữ nguyên style cũ hoặc dùng template style
+          const existingStyle = cell.style;
+          const templateStyle = templateStyles.get(colIndex);
+          
+          // Set công thức BMI nếu là cột BMI
+          if (col.key === 'BMI' && weightCol && heightCol) {
+            cell.value = {
+              formula: `IF(OR(${weightCol}${dataRowNum}="",${heightCol}${dataRowNum}=""),"",ROUND(${weightCol}${dataRowNum}/(${heightCol}${dataRowNum}^2),2))`,
+              result: value || undefined
+            };
+          }
+          // Set công thức Thể trạng nếu là cột THỂ TRẠNG
+          else if (col.key === 'THỂ TRẠNG' && bmiCol) {
+            cell.value = {
+              formula: `IF(${bmiCol}${dataRowNum}="","",IF(${bmiCol}${dataRowNum}<18,"Thiếu cân",IF(${bmiCol}${dataRowNum}<=25,"Bình thường","Thừa cân")))`,
+              result: value || undefined
+            };
+          }
+          // Set giá trị bình thường
+          else if (value !== undefined && value !== null && value !== '') {
+            cell.value = value;
+          } else {
+            cell.value = '';
+          }
+          
+          // Giữ style (uu tiên style hiện có, nếu không thì dùng template)
+          if (existingStyle && Object.keys(existingStyle).length > 0) {
+            cell.style = existingStyle;
+          } else if (templateStyle) {
+            cell.style = templateStyle;
+          }
+        }
+      });
     });
   });
   

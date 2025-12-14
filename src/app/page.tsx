@@ -2,12 +2,13 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PatientData, ColumnConfig, STANDARD_COLUMNS } from '@/types/patient';
-import { importExcel, exportExcel, resetOriginalFileInfo } from '@/utils/excelUtils';
+import { importExcel, exportExcel, resetOriginalFileInfo, restoreOriginalWorkbook, hasOriginalWorkbook } from '@/utils/excelUtils';
 import { PatientTable } from '@/components/PatientTable';
 import { PatientEditor } from '@/components/PatientEditor';
 import { Button } from '@/components/ui/button';
 import { Upload, Download, Plus, Database, PlusCircle, X, Save, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast, Toaster } from 'sonner';
 
 // Sample data matching the provided format
 const SAMPLE_DATA: PatientData[] = [
@@ -119,7 +120,6 @@ export default function Home() {
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
   const [newColumnName, setNewColumnName] = useState('');
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -130,30 +130,60 @@ export default function Home() {
   const AUTOSAVE_KEY = 'mediexcel_autosave';
   const AUTOSAVE_INTERVAL = 30000; // 30 giây
 
-  // Show toast notification - đặt trước các useEffect
+  // Show toast notification - sử dụng sonner
   const showToast = useCallback((message: string) => {
-    setToast({ message, visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 3000);
+    // Phân loại và hiển thị toast phù hợp
+    if (message.includes('✅') || message.includes('thành công')) {
+      toast.success(message.replace(/[✅➕]/g, '').trim(), {
+        duration: 3000,
+      });
+    } else if (message.includes('❌') || message.includes('Lỗi')) {
+      toast.error(message.replace('❌', '').trim(), {
+        duration: 4000,
+      });
+    } else if (message.includes('🗑️') || message.includes('xoá')) {
+      toast.warning(message.replace('🗑️', '').trim(), {
+        duration: 3000,
+      });
+    } else if (message.includes('➕') || message.includes('thêm')) {
+      toast.info(message.replace('➕', '').trim(), {
+        duration: 3000,
+      });
+    } else {
+      toast(message, {
+        duration: 3000,
+      });
+    }
   }, []);
 
   // Load dữ liệu từ localStorage khi khởi động
   useEffect(() => {
-    const savedData = localStorage.getItem(AUTOSAVE_KEY);
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        if (parsed.patients && parsed.patients.length > 0) {
-          setPatients(parsed.patients);
-          setColumns(parsed.columns || STANDARD_COLUMNS);
-          setFileName(parsed.fileName || 'AutoSave');
-          setIsSimpleFormat(parsed.isSimpleFormat || false);
-          setLastSaved(new Date(parsed.savedAt));
-          showToast('📦 Đã khôi phục dữ liệu từ phiên làm việc trước');
+    const loadData = async () => {
+      const savedData = localStorage.getItem(AUTOSAVE_KEY);
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          if (parsed.patients && parsed.patients.length > 0) {
+            setPatients(parsed.patients);
+            setColumns(parsed.columns || STANDARD_COLUMNS);
+            setFileName(parsed.fileName || 'AutoSave');
+            setIsSimpleFormat(parsed.isSimpleFormat || false);
+            setLastSaved(new Date(parsed.savedAt));
+            
+            // Khôi phục workbook gốc từ IndexedDB
+            const restored = await restoreOriginalWorkbook();
+            if (restored) {
+              showToast('📦 Đã khôi phục dữ liệu và format file gốc');
+            } else {
+              showToast('📦 Đã khôi phục dữ liệu (cần import lại file để giữ format gốc khi export)');
+            }
+          }
+        } catch (e) {
+          console.error('Error loading autosave:', e);
         }
-      } catch (e) {
-        console.error('Error loading autosave:', e);
       }
-    }
+    };
+    loadData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -205,9 +235,8 @@ export default function Home() {
     localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(dataToSave));
     setLastSaved(new Date());
     setHasUnsavedChanges(false);
-    setToast({ message: '✅ Đã lưu dữ liệu!', visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 3000);
-  }, [patients, columns, fileName, isSimpleFormat]);
+    showToast('✅ Đã lưu dữ liệu!');
+  }, [patients, columns, fileName, isSimpleFormat, showToast]);
 
   // Clear autosave
   const handleClearAutoSave = useCallback(() => {
@@ -218,10 +247,9 @@ export default function Home() {
       setFileName('');
       setLastSaved(null);
       resetOriginalFileInfo();
-      setToast({ message: '🗑️ Đã xóa dữ liệu', visible: true });
-      setTimeout(() => setToast({ message: '', visible: false }), 3000);
+      showToast('🗑️ Đã xóa dữ liệu');
     }
-  }, []);
+  }, [showToast]);
 
   // Keyboard shortcut Ctrl+S để lưu
   useEffect(() => {
@@ -239,14 +267,13 @@ export default function Home() {
           localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(dataToSave));
           setLastSaved(new Date());
           setHasUnsavedChanges(false);
-          setToast({ message: '✅ Đã lưu dữ liệu!', visible: true });
-          setTimeout(() => setToast({ message: '', visible: false }), 3000);
+          showToast('✅ Đã lưu dữ liệu!');
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [patients, columns, fileName, isSimpleFormat]);
+  }, [patients, columns, fileName, isSimpleFormat, showToast]);
 
   // Import Excel
   const handleImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -275,20 +302,31 @@ export default function Home() {
     }
   }, [showToast]);
 
-  // Export Excel
+  // Export Excel - sử dụng tên file gốc
   const handleExport = useCallback(async () => {
     if (patients.length === 0) {
       alert('Chưa có dữ liệu để xuất!');
       return;
     }
     try {
-      await exportExcel(patients, columns);
-      showToast('✅ Đã xuất file thành công!');
+      // Khôi phục workbook gốc nếu chưa có
+      if (!hasOriginalWorkbook()) {
+        await restoreOriginalWorkbook();
+      }
+      
+      // Truyền fileName để đảm bảo giữ tên file gốc
+      await exportExcel(patients, columns, fileName || undefined);
+      
+      if (hasOriginalWorkbook()) {
+        showToast('✅ Đã xuất file với format gốc!');
+      } else {
+        showToast('✅ Đã xuất file (format mới - import lại file gốc để giữ format)');
+      }
     } catch (error) {
       console.error('Export error:', error);
       alert('Lỗi khi xuất file!');
     }
-  }, [patients, columns, showToast]);
+  }, [patients, columns, fileName, showToast]);
 
   // Toggle column visibility
   const handleColumnToggle = useCallback((key: string) => {
@@ -324,11 +362,13 @@ export default function Home() {
 
   // Delete patient
   const handleDelete = useCallback((index: number) => {
+    const patientName = patients[index]?.['HỌ VÀ TÊN'] || patients[index]?.['CODE'] || 'Bệnh nhân';
     setPatients(prev => prev.filter((_, i) => i !== index));
     if (selectedRow === index) {
       setSelectedRow(null);
     }
-  }, [selectedRow]);
+    showToast(`🗑️ Đã xoá ${patientName}`);
+  }, [selectedRow, patients, showToast]);
 
   // Save patient
   const handleSave = useCallback((updatedPatient: PatientData) => {
@@ -336,8 +376,9 @@ export default function Home() {
       setPatients(prev => prev.map((p, i) => 
         i === editingIndex ? updatedPatient : p
       ));
+      showToast('✅ Đã lưu dữ liệu!');
     }
-  }, [editingIndex]);
+  }, [editingIndex, showToast]);
 
   // Save and close
   const handleSaveAndClose = useCallback((updatedPatient: PatientData) => {
@@ -383,8 +424,8 @@ export default function Home() {
   // Add new patient
   const handleAddNew = useCallback(() => {
     const newPatient: PatientData = {
-      CODE: `NEW_${Date.now()}`,
-      'HỌ VÀ TÊN': 'Bệnh nhân mới',
+      CODE: '',
+      'HỌ VÀ TÊN': '',
       NS: '',
       GT: '',
       'Cân nặng': '',
@@ -392,7 +433,7 @@ export default function Home() {
       BMI: '',
       'THỂ TRẠNG': '',
       'KHÁM TỔNG QUÁT': '',
-      'PHÂN LOẠI SỨC KHỎE': '',
+      'PHÂN LOẠI SỨC KHỏE': '',
       Xquang: '',
       'Siêu âm': '',
       'Điện tim': '',
@@ -400,7 +441,8 @@ export default function Home() {
     setPatients(prev => [...prev, newPatient]);
     setEditingIndex(patients.length);
     setIsEditorOpen(true);
-  }, [patients.length]);
+    showToast('➕ Đã thêm bệnh nhân mới - Vui lòng nhập thông tin');
+  }, [patients.length, showToast]);
 
   // Move patient position
   const handleMovePatient = useCallback((fromIndex: number, toIndex: number) => {
@@ -617,12 +659,17 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Toast notification */}
-      {toast.visible && (
-        <div className="fixed bottom-4 right-4 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg z-50 animate-in slide-in-from-bottom-2">
-          {toast.message}
-        </div>
-      )}
+      {/* Sonner Toast - luôn hiển thị trên modal */}
+      <Toaster 
+        position="top-center" 
+        richColors 
+        expand={true}
+        toastOptions={{
+          style: {
+            zIndex: 99999,
+          },
+        }}
+      />
 
       {/* Editor Modal */}
       <PatientEditor

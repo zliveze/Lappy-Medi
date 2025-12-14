@@ -82,9 +82,9 @@ export const DENTAL_OPTIONS = [
 ];
 
 export const LIVER_OPTIONS = [
-  'Gan nhiễm mỡ độ 1',
-  'Gan nhiễm mỡ độ 2',
-  'Gan nhiễm mỡ độ 3',
+  'Gan nhiễm mỡ độ I',
+  'Gan nhiễm mỡ độ II',
+  'Gan nhiễm mỡ độ III',
 ];
 
 export const KIDNEY_OPTIONS = [
@@ -94,8 +94,8 @@ export const KIDNEY_OPTIONS = [
 ];
 
 export const VISION_OPTIONS = [
-  '1/10', '2/10', '3/10', '4/10', '5/10',
-  '6/10', '7/10', '8/10', '9/10', '10/10',
+  '10/10', '9/10', '8/10', '7/10', '6/10',
+  '5/10', '4/10', '3/10', '2/10', '1/10',
 ];
 
 // Options ĐNT (Đếm Ngón Tay) cho thị lực kém
