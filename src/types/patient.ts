@@ -93,6 +93,25 @@ export const KIDNEY_OPTIONS = [
   'Sỏi thận 2 bên',
 ];
 
+export const ULTRASOUND_ABDOMEN_NOTE_OPTIONS = [
+  'Polyp túi mật',
+  'Sỏi túi mật',
+  'Dày thành túi mật',
+  'nang thận trái',
+  'nang thận phải',
+  'nang thận 2 bên',
+  'Phì đại tiền liệt tuyến',
+  'nốt vôi tiền liệt tuyến',
+ ];
+
+export const ULTRASOUND_BREAST_OPTIONS = [
+  'sang thương vú trái BIRADS II',
+  'sang thương vú phải BIRADS II',
+  'sang thương 2 vú BIRADS II',
+  'nang tuyến vú',
+  'u xơ tuyến vú',
+ ];
+
 export const VISION_OPTIONS = [
   '10/10', '9/10', '8/10', '7/10', '6/10',
   '5/10', '4/10', '3/10', '2/10', '1/10',

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PatientData, BLOOD_PRESSURE_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS } from '@/types/patient';
+import { PatientData, BLOOD_PRESSURE_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS } from '@/types/patient';
 import { calculateBMI, getPhysiqueFromBMI } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1278,6 +1278,23 @@ export function PatientEditor({
                           </div>
                           
                           {/* Ghi chú thêm */}
+                          <div className="space-y-1">
+                            <Label className="text-sm font-medium">Mẫu nhanh:</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {ULTRASOUND_ABDOMEN_NOTE_OPTIONS.map((opt) => (
+                                <Button
+                                  key={opt}
+                                  size="sm"
+                                  variant={imaging.abdomenNote === opt ? 'default' : 'outline'}
+                                  onClick={() => setImaging({ ...imaging, abdomenNote: opt })}
+                                  className="text-xs h-7"
+                                >
+                                  {opt}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+
                           <Input
                             value={imaging.abdomenNote}
                             onChange={(e) => setImaging({ ...imaging, abdomenNote: e.target.value })}
@@ -1324,11 +1341,26 @@ export function PatientEditor({
                         <span className="font-medium">Siêu âm Tuyến vú</span>
                       </label>
                       {imaging.breastEnabled && (
-                        <Input
-                          value={imaging.breast}
-                          onChange={(e) => setImaging({ ...imaging, breast: e.target.value })}
-                          placeholder="chưa ghi nhận bất thường"
-                        />
+                        <>
+                          <div className="flex flex-wrap gap-1">
+                            {ULTRASOUND_BREAST_OPTIONS.map((opt) => (
+                              <Button
+                                key={opt}
+                                size="sm"
+                                variant={imaging.breast === opt ? 'default' : 'outline'}
+                                onClick={() => setImaging({ ...imaging, breast: opt })}
+                                className="text-xs h-7"
+                              >
+                                {opt}
+                              </Button>
+                            ))}
+                          </div>
+                          <Input
+                            value={imaging.breast}
+                            onChange={(e) => setImaging({ ...imaging, breast: e.target.value })}
+                            placeholder="chưa ghi nhận bất thường"
+                          />
+                        </>
                       )}
                     </div>
 
