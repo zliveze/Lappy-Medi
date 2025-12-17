@@ -263,6 +263,25 @@ export function PatientEditor({
       // Parse heart rate
       const hrMatch = ecgText.match(/Nhịp xoang[:\s]*(\d+)/i);
       const parsedHeartRate = hrMatch ? hrMatch[1] : '';
+
+      // Parse ECG note
+      let parsedEcgNote = ecgText;
+      // Remove heart rate part
+      if (hrMatch) {
+        parsedEcgNote = parsedEcgNote.replace(hrMatch[0], '');
+      } else {
+        parsedEcgNote = parsedEcgNote.replace(/Nhịp xoang đều/i, '');
+      }
+      // Remove l/p unit if exists
+      parsedEcgNote = parsedEcgNote.replace(/l\/p/i, '');
+      
+      // Remove axis part
+      if (parsedEcgAxis) {
+        parsedEcgNote = parsedEcgNote.replace(parsedEcgAxis, '');
+      }
+      
+      // Clean up punctuation
+      parsedEcgNote = parsedEcgNote.replace(/,\s*,/g, ',').replace(/^[\s,-]+|[\s,-]+$/g, '').trim();
       
       setImaging({
         xrayEnabled: !!xrayText,
@@ -280,7 +299,7 @@ export function PatientEditor({
         ecgEnabled: !!ecgText,
         heartRate: parsedHeartRate,
         ecgAxis: parsedEcgAxis,
-        ecgNote: '',
+        ecgNote: parsedEcgNote,
       });
     }
   }, [patient]);
@@ -590,6 +609,9 @@ export function PatientEditor({
     }
     if (imaging.ecgAxis) {
       ecgParts.push(imaging.ecgAxis);
+    }
+    if (imaging.ecgNote) {
+      ecgParts.push(imaging.ecgNote);
     }
     return ` - ${ecgParts.join(', ')}`;
   }, [imaging]);
