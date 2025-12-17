@@ -69,7 +69,7 @@ interface ExamState {
 
 interface ImagingState {
   xrayEnabled: boolean;
-  xray: string;
+  xrayNotes: string[]; // Chuyển sang mảng ghi chú
   // Siêu âm - mỗi loại có checkbox riêng
   abdomenEnabled: boolean;
   liverConditions: string[]; // Đổi sang mảng để hỗ trợ nhiều bệnh lý
@@ -85,7 +85,7 @@ interface ImagingState {
   ecgEnabled: boolean;
   heartRate: string;
   ecgAxis: string; // Trục điện tim
-  ecgNote: string;
+  ecgNotes: string[];
 }
 
 export function PatientEditor({
@@ -149,7 +149,7 @@ export function PatientEditor({
   // Imaging state - mặc định để trống, chỉ hiển thị text mặc định khi build
   const [imaging, setImaging] = useState<ImagingState>({
     xrayEnabled: false,
-    xray: '',
+    xrayNotes: [''],
     abdomenEnabled: false,
     liverConditions: [],
     kidneyConditions: [],
@@ -163,7 +163,7 @@ export function PatientEditor({
     ecgEnabled: false,
     heartRate: '',
     ecgAxis: '',
-    ecgNote: '',
+    ecgNotes: [''],
   });
 
   // Theo dõi patient ID trước đó để biết khi nào chuyển bệnh nhân mới
@@ -210,6 +210,20 @@ export function PatientEditor({
       const xrayText = String(patient['Xquang'] || '');
       const ultrasoundText = String(patient['Siêu âm'] || '');
       const ecgText = String(patient['Điện tim'] || '');
+      
+      // Parse X-Quang
+      // Tách dòng và loại bỏ prefix ' - '
+      const parsedXrayNotes = xrayText
+        .split('\n')
+        .map(line => {
+          let cleanLine = line.trim();
+          if (cleanLine.startsWith('- ')) cleanLine = cleanLine.substring(2).trim();
+          else if (cleanLine.startsWith('-')) cleanLine = cleanLine.substring(1).trim();
+          return cleanLine;
+        })
+        .filter(line => line);
+      
+      if (parsedXrayNotes.length === 0) parsedXrayNotes.push('');
       
       // Parse ultrasound text to detect which types are enabled
       const hasAbdomen = ultrasoundText.toLowerCase().includes('bụng');
@@ -264,28 +278,31 @@ export function PatientEditor({
       const hrMatch = ecgText.match(/Nhịp xoang[:\s]*(\d+)/i);
       const parsedHeartRate = hrMatch ? hrMatch[1] : '';
 
-      // Parse ECG note
-      let parsedEcgNote = ecgText;
-      // Remove heart rate part
-      if (hrMatch) {
-        parsedEcgNote = parsedEcgNote.replace(hrMatch[0], '');
-      } else {
-        parsedEcgNote = parsedEcgNote.replace(/Nhịp xoang đều/i, '');
-      }
-      // Remove l/p unit if exists
-      parsedEcgNote = parsedEcgNote.replace(/l\/p/i, '');
+      // Parse ECG notes from lines
+      const parsedEcgNotes: string[] = [];
+      const ecgLines = ecgText.split('\n');
       
-      // Remove axis part
-      if (parsedEcgAxis) {
-        parsedEcgNote = parsedEcgNote.replace(parsedEcgAxis, '');
-      }
-      
-      // Clean up punctuation
-      parsedEcgNote = parsedEcgNote.replace(/,\s*,/g, ',').replace(/^[\s,-]+|[\s,-]+$/g, '').trim();
-      
+      ecgLines.forEach(line => {
+        let cleanLine = line.trim();
+        // Remove prefix ' - '
+        if (cleanLine.startsWith('- ')) cleanLine = cleanLine.substring(2).trim();
+        else if (cleanLine.startsWith('-')) cleanLine = cleanLine.substring(1).trim();
+        
+        // Skip if empty
+        if (!cleanLine) return;
+        
+        // Skip known parts
+        if (cleanLine.toLowerCase().includes('nhịp xoang')) return;
+        if (ECG_AXIS_OPTIONS.some(opt => cleanLine.includes(opt))) return;
+        
+        parsedEcgNotes.push(cleanLine);
+      });
+        
+      if (parsedEcgNotes.length === 0) parsedEcgNotes.push('');
+
       setImaging({
         xrayEnabled: !!xrayText,
-        xray: xrayText,
+        xrayNotes: parsedXrayNotes,
         abdomenEnabled: hasAbdomen,
         liverConditions: parsedLiverConditions,
         kidneyConditions: parsedKidneyConditions,
@@ -299,7 +316,7 @@ export function PatientEditor({
         ecgEnabled: !!ecgText,
         heartRate: parsedHeartRate,
         ecgAxis: parsedEcgAxis,
-        ecgNote: parsedEcgNote,
+        ecgNotes: parsedEcgNotes,
       });
     }
   }, [patient]);
@@ -610,14 +627,27 @@ export function PatientEditor({
     if (imaging.ecgAxis) {
       ecgParts.push(imaging.ecgAxis);
     }
-    if (imaging.ecgNote) {
-      ecgParts.push(imaging.ecgNote);
+    if (imaging.ecgNotes && imaging.ecgNotes.length > 0) {
+      const validNotes = imaging.ecgNotes.filter(n => n && n.trim());
+      if (validNotes.length > 0) {
+        ecgParts.push(...validNotes);
+      }
     }
-    return ` - ${ecgParts.join(', ')}`;
+    // Join with newline and prefix each line with ' - '
+    return ecgParts.map(part => ` - ${part}`).join('\n');
   }, [imaging]);
 
   const buildUpdatedPatient = (): PatientData | null => {
     if (!patient) return null;
+
+    // Build Xray string
+    let xrayString = '';
+    if (imaging.xrayEnabled && imaging.xrayNotes.length > 0) {
+      xrayString = imaging.xrayNotes
+        .filter(n => n && n.trim())
+        .map(n => ` - ${n}`)
+        .join('\n');
+    }
 
     return {
       ...patient,
@@ -631,7 +661,7 @@ export function PatientEditor({
       'THỂ TRẠNG': physique.text,
       'PHÂN LOẠI SỨC KHỎE': classification,
       'KHÁM TỔNG QUÁT': buildGeneralExam(),
-      'Xquang': imaging.xrayEnabled ? imaging.xray : '',
+      'Xquang': xrayString,
       'Siêu âm': buildUltrasound(),
       'Điện tim': buildEcg(),
     };
@@ -1207,11 +1237,42 @@ export function PatientEditor({
                       </div>
                       <div>
                         <Label>Ghi chú thêm</Label>
-                        <Input
-                          value={imaging.ecgNote}
-                          onChange={(e) => setImaging({ ...imaging, ecgNote: e.target.value })}
-                          placeholder="Ghi chú thêm về ECG..."
-                        />
+                        <div className="space-y-2">
+                          {imaging.ecgNotes.map((note, idx) => (
+                            <div key={idx} className="flex gap-2 items-center">
+                              <Input
+                                value={note}
+                                onChange={(e) => {
+                                  const newNotes = [...imaging.ecgNotes];
+                                  newNotes[idx] = e.target.value;
+                                  setImaging({ ...imaging, ecgNotes: newNotes });
+                                }}
+                                placeholder={`Ghi chú ${idx + 1}...`}
+                              />
+                              {imaging.ecgNotes.length > 1 && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-500 h-10 w-10 p-0"
+                                  onClick={() => {
+                                    const newNotes = imaging.ecgNotes.filter((_, i) => i !== idx);
+                                    setImaging({ ...imaging, ecgNotes: newNotes });
+                                  }}
+                                >
+                                  ✕
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setImaging({ ...imaging, ecgNotes: [...imaging.ecgNotes, ''] })}
+                            className="w-full border-dashed"
+                          >
+                            + Thêm ghi chú
+                          </Button>
+                        </div>
                       </div>
                     </>
                   )}
@@ -1231,19 +1292,49 @@ export function PatientEditor({
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setImaging({ ...imaging, xray: ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang' })}
+                        onClick={() => setImaging({ ...imaging, xrayNotes: ['Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang'] })}
                       >
                         Đặt mặc định
                       </Button>
                     )}
                   </div>
                   {imaging.xrayEnabled && (
-                    <Textarea
-                      value={imaging.xray}
-                      onChange={(e) => setImaging({ ...imaging, xray: e.target.value })}
-                      placeholder="Nhập kết quả X-Quang..."
-                      rows={3}
-                    />
+                    <div className="space-y-2">
+                      {imaging.xrayNotes.map((note, idx) => (
+                        <div key={idx} className="flex gap-2 items-center">
+                          <Input
+                            value={note}
+                            onChange={(e) => {
+                              const newNotes = [...imaging.xrayNotes];
+                              newNotes[idx] = e.target.value;
+                              setImaging({ ...imaging, xrayNotes: newNotes });
+                            }}
+                            placeholder={`Kết quả X-Quang ${idx + 1}...`}
+                          />
+                          {imaging.xrayNotes.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 h-10 w-10 p-0"
+                              onClick={() => {
+                                const newNotes = imaging.xrayNotes.filter((_, i) => i !== idx);
+                                setImaging({ ...imaging, xrayNotes: newNotes });
+                              }}
+                            >
+                              ✕
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setImaging({ ...imaging, xrayNotes: [...imaging.xrayNotes, ''] })}
+                        className="w-full border-dashed"
+                      >
+                        + Thêm kết quả/ghi chú
+                      </Button>
+                    </div>
                   )}
                 </div>
 
