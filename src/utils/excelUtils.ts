@@ -115,10 +115,64 @@ async function loadWorkbookFromIndexedDB(): Promise<boolean> {
   });
 }
 
+// Xóa dữ liệu trong IndexedDB
+async function clearIndexedDB(): Promise<void> {
+  return new Promise((resolve) => {
+    const request = indexedDB.open(WORKBOOK_DB_NAME, 1);
+    request.onerror = () => resolve();
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(WORKBOOK_STORE_NAME)) {
+        db.createObjectStore(WORKBOOK_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => {
+      try {
+        const db = request.result;
+        const tx = db.transaction(WORKBOOK_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(WORKBOOK_STORE_NAME);
+        store.delete(WORKBOOK_KEY);
+        tx.oncomplete = () => {
+          console.log('Cleared workbook from IndexedDB');
+          resolve();
+        };
+        tx.onerror = () => resolve();
+      } catch (e) {
+        resolve();
+      }
+    };
+  });
+}
+
 // Export để có thể gọi từ page
-export async function restoreOriginalWorkbook(): Promise<boolean> {
-  if (originalFileInfo) return true;
-  return await loadWorkbookFromIndexedDB();
+// expectedFileName: nếu có, chỉ restore nếu filename khớp
+export async function restoreOriginalWorkbook(expectedFileName?: string): Promise<boolean> {
+  // Kiểm tra nếu đã có originalFileInfo trong memory
+  const currentInfo = originalFileInfo;
+  if (currentInfo) {
+    // Nếu có expectedFileName, kiểm tra xem có khớp không
+    if (expectedFileName && currentInfo.fileName !== expectedFileName) {
+      console.log('Current workbook does not match expected file:', expectedFileName, 'vs', currentInfo.fileName);
+      return false;
+    }
+    return true;
+  }
+
+  // Load từ IndexedDB
+  const loaded = await loadWorkbookFromIndexedDB();
+
+  // Kiểm tra lại sau khi load
+  const loadedInfo = originalFileInfo;
+
+  // Nếu có expectedFileName, kiểm tra sau khi load
+  if (loaded && expectedFileName && loadedInfo && loadedInfo.fileName !== expectedFileName) {
+    console.log('Loaded workbook does not match expected file:', expectedFileName, 'vs', loadedInfo.fileName);
+    // Clear vì không khớp
+    originalFileInfo = null;
+    return false;
+  }
+
+  return loaded;
 }
 
 export function hasOriginalWorkbook(): boolean {
@@ -148,10 +202,11 @@ export function getOriginalFileInfo(): OriginalFileInfo | null {
 }
 
 /**
- * Reset thông tin file gốc
+ * Reset thông tin file gốc và xóa IndexedDB
  */
-export function resetOriginalFileInfo(): void {
+export async function resetOriginalFileInfo(): Promise<void> {
   originalFileInfo = null;
+  await clearIndexedDB();
 }
 
 /**
@@ -160,11 +215,11 @@ export function resetOriginalFileInfo(): void {
  */
 function findAllTables(worksheet: ExcelJS.Worksheet): { tableName: string; headerRow: number }[] {
   const tables: { tableName: string; headerRow: number }[] = [];
-  
+
   for (let row = 1; row <= worksheet.rowCount; row++) {
     const rowData = worksheet.getRow(row);
     let hasHeaderKeyword = false;
-    
+
     // Kiểm tra xem dòng này có phải là header không
     for (let col = 1; col <= Math.min(rowData.cellCount, 10); col++) {
       const cell = rowData.getCell(col);
@@ -174,7 +229,7 @@ function findAllTables(worksheet: ExcelJS.Worksheet): { tableName: string; heade
         break;
       }
     }
-    
+
     if (hasHeaderKeyword) {
       // Tìm tên bảng từ các dòng phía trên (thường là 1-3 dòng)
       let tableName = '';
@@ -191,7 +246,7 @@ function findAllTables(worksheet: ExcelJS.Worksheet): { tableName: string; heade
       tables.push({ tableName: tableName || `Bảng ${tables.length + 1}`, headerRow: row });
     }
   }
-  
+
   return tables.length > 0 ? tables : [{ tableName: '', headerRow: 1 }];
 }
 
@@ -220,7 +275,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
   const arrayBuffer = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(arrayBuffer);
-  
+
   // Chọn sheet: ưu tiên "DS", nếu không có thì lấy sheet đầu tiên
   let worksheet = workbook.worksheets.find(
     ws => ws.name.toUpperCase() === PREFERRED_SHEET_NAME.toUpperCase()
@@ -228,21 +283,21 @@ export async function importExcel(file: File): Promise<ImportResult> {
   if (!worksheet) {
     worksheet = workbook.worksheets[0];
   }
-  
+
   const sheetName = worksheet.name;
-  
+
   // Tìm tất cả các bảng trong sheet
   const allTables = findAllTables(worksheet);
   const hasMultipleTables = allTables.length > 1;
-  
+
   // Sử dụng bảng đầu tiên cho header chính
   const headerRow = allTables[0].headerRow;
-  
+
   // Lấy danh sách headers từ bảng đầu tiên
   const headerRowData = worksheet.getRow(headerRow);
   const headers: string[] = [];
   const columnMapping = new Map<string, number>();
-  
+
   headerRowData.eachCell({ includeEmpty: false }, (cell, colNumber) => {
     const headerName = String(cell.value || '').trim();
     if (headerName) {
@@ -250,27 +305,27 @@ export async function importExcel(file: File): Promise<ImportResult> {
       columnMapping.set(headerName, colNumber);
     }
   });
-  
+
   // Đọc dữ liệu bệnh nhân từ tất cả các bảng
   const data: PatientData[] = [];
   const tableGroups: TableGroup[] = [];
-  
+
   for (let tableIdx = 0; tableIdx < allTables.length; tableIdx++) {
     const table = allTables[tableIdx];
     const nextTable = allTables[tableIdx + 1];
     const endRow = nextTable ? nextTable.headerRow - 1 : worksheet.rowCount;
     const tableData: PatientData[] = [];
-    
+
     for (let rowNum = table.headerRow + 1; rowNum <= endRow; rowNum++) {
       const row = worksheet.getRow(rowNum);
       const patient: PatientData = {};
       let hasData = false;
-      
+
       // Kiểm tra xem dòng này có phải là header của bảng tiếp theo không
       let isNextHeader = false;
       let isSkipRow = false;
       const firstCellValue = String(row.getCell(1).value || '').toUpperCase().trim();
-      
+
       for (let col = 1; col <= Math.min(row.cellCount, 10); col++) {
         const cellValue = String(row.getCell(col).value || '').toUpperCase().trim();
         if (HEADER_KEYWORDS.some(keyword => cellValue.includes(keyword))) {
@@ -278,20 +333,20 @@ export async function importExcel(file: File): Promise<ImportResult> {
           break;
         }
       }
-      
+
       // Kiểm tra dòng cần skip:
       // 1. Dòng tên bảng (chứa "DS " hoặc "DANH SÁCH")
       // 2. Dòng ghi chú (chứa "LẤY MẪU", "KHÁM TỪ", v.v.)
       // 3. Dòng có cùng nội dung ở nhiều cột liên tiếp (thường là ghi chú)
       if (firstCellValue.length > 5) {
-        if (firstCellValue.includes('DS ') || 
-            firstCellValue.includes('DANH SÁCH') ||
-            firstCellValue.includes('LẤY MẪU') ||
-            firstCellValue.includes('KHÁM TỪ') ||
-            firstCellValue.includes('GHI CHÚ')) {
+        if (firstCellValue.includes('DS ') ||
+          firstCellValue.includes('DANH SÁCH') ||
+          firstCellValue.includes('LẤY MẪU') ||
+          firstCellValue.includes('KHÁM TỪ') ||
+          firstCellValue.includes('GHI CHÚ')) {
           isSkipRow = true;
         }
-        
+
         // Kiểm tra nếu nhiều cột có cùng giá trị (dấu hiệu của dòng ghi chú merged)
         if (!isSkipRow) {
           let sameValueCount = 0;
@@ -306,16 +361,16 @@ export async function importExcel(file: File): Promise<ImportResult> {
           }
         }
       }
-      
+
       if (isNextHeader) break;
       if (isSkipRow) continue; // Skip dòng ghi chú/tên bảng
-      
+
       headers.forEach(header => {
         const colNum = columnMapping.get(header);
         if (colNum) {
           const cell = row.getCell(colNum);
           let value = cell.value;
-          
+
           // Xử lý các kiểu giá trị đặc biệt
           if (value instanceof Date) {
             value = value.toLocaleDateString('vi-VN');
@@ -329,21 +384,21 @@ export async function importExcel(file: File): Promise<ImportResult> {
               value = String(value);
             }
           }
-          
+
           // Normalize header để map đúng key chuẩn
           const normalizedHeader = header.toUpperCase().trim().replace(/\s+/g, ' ');
-          const standardCol = STANDARD_COLUMNS.find(sc => 
+          const standardCol = STANDARD_COLUMNS.find(sc =>
             sc.key.toUpperCase().trim().replace(/\s+/g, ' ') === normalizedHeader
           );
           const key = standardCol ? standardCol.key : header;
-          
+
           patient[key] = value !== null && value !== undefined ? String(value) : '';
           if (value !== null && value !== undefined && value !== '') {
             hasData = true;
           }
         }
       });
-      
+
       if (hasData) {
         // Thêm tên bảng vào patient nếu có nhiều bảng
         if (hasMultipleTables && table.tableName) {
@@ -353,7 +408,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
         data.push(patient);
       }
     }
-    
+
     if (hasMultipleTables) {
       tableGroups.push({
         tableName: table.tableName,
@@ -363,7 +418,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
       });
     }
   }
-  
+
   // Tạo danh sách TableInfo từ allTables
   const tableInfos: TableInfo[] = allTables.map((table, idx) => {
     const nextTable = allTables[idx + 1];
@@ -374,7 +429,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
       dataEndRow: nextTable ? nextTable.headerRow - 1 : worksheet.rowCount,
     };
   });
-  
+
   // Lưu thông tin file gốc
   originalFileInfo = {
     workbook,
@@ -385,7 +440,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
     fileName: file.name,
     tables: tableInfos,
   };
-  
+
   // Lưu workbook vào IndexedDB để có thể khôi phục sau refresh
   try {
     const bufferToSave = await workbook.xlsx.writeBuffer();
@@ -402,47 +457,47 @@ export async function importExcel(file: File): Promise<ImportResult> {
   } catch (e) {
     console.error('Error saving workbook to IndexedDB:', e);
   }
-  
+
   // Kiểm tra file đơn giản
   const basicColumns = ['CODE', 'HỌ VÀ TÊN', 'NS', 'GT'];
-  const hasOnlyBasicColumns = headers.every(h => 
+  const hasOnlyBasicColumns = headers.every(h =>
     basicColumns.some(bc => h.toUpperCase().includes(bc.toUpperCase()) || bc.toUpperCase().includes(h.toUpperCase()))
   ) || headers.length <= 6;
   const isSimpleFormat = hasOnlyBasicColumns && headers.length <= 6;
-  
+
   // Normalize header để so sánh (loại bỏ dấu cách thừa, chuyển uppercase)
   const normalizeHeader = (h: string) => h.toUpperCase().trim().replace(/\s+/g, ' ');
-  
+
   // Tạo cấu hình cột - sử dụng Set để tránh trùng lặp
   const columnSet = new Set(headers.map(h => normalizeHeader(h)));
   const addedKeys = new Set<string>(); // Track các key đã thêm
   const columns: ColumnConfig[] = [];
-  
+
   headers.forEach((header) => {
     const normalizedHeader = normalizeHeader(header);
-    
+
     // Kiểm tra xem đã thêm cột này chưa
     if (addedKeys.has(normalizedHeader)) {
       return; // Skip nếu đã có
     }
-    
-    const standardCol = STANDARD_COLUMNS.find(sc => 
+
+    const standardCol = STANDARD_COLUMNS.find(sc =>
       normalizeHeader(sc.key) === normalizedHeader
     );
-    
+
     // Sử dụng key chuẩn nếu có, nếu không dùng header gốc
     const key = standardCol ? standardCol.key : header;
-    
+
     columns.push({
       key: key,
       header: standardCol ? standardCol.header : header,
       visible: true,
       width: standardCol?.width || 120,
     });
-    
+
     addedKeys.add(normalizedHeader);
   });
-  
+
   // Thêm các cột tiêu chuẩn còn thiếu (theo thứ tự chuẩn, PHÂN LOẠI SỨC KHỎE cuối cùng)
   STANDARD_COLUMNS.forEach(stdCol => {
     const normalizedKey = normalizeHeader(stdCol.key);
@@ -456,7 +511,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
       addedKeys.add(normalizedKey);
     }
   });
-  
+
   return {
     data,
     columns,
@@ -475,19 +530,25 @@ export async function exportExcel(
   fileName?: string
 ): Promise<void> {
   const visibleColumns = columns.filter(col => col.visible);
-  
+
   // Ưu tiên: fileName truyền vào > originalFileInfo.fileName > mặc định
   let exportFileName = fileName || (originalFileInfo?.fileName) || 'Ket_Qua_Kham.xlsx';
-  
+
   // Đảm bảo có đuôi .xlsx
   if (!exportFileName.toLowerCase().endsWith('.xlsx') && !exportFileName.toLowerCase().endsWith('.xls')) {
     exportFileName += '.xlsx';
   }
-  
+
   console.log('Export with fileName:', exportFileName, 'originalFileInfo:', !!originalFileInfo);
-  
+
   if (originalFileInfo) {
-    await exportWithOriginalFormat(data, visibleColumns, exportFileName);
+    try {
+      await exportWithOriginalFormat(data, visibleColumns, exportFileName);
+    } catch (error) {
+      console.error('Failed to export with original format, falling back to new file:', error);
+      // Fallback: export as new file nếu có lỗi với original format
+      await exportNewFile(data, visibleColumns, exportFileName);
+    }
   } else {
     await exportNewFile(data, visibleColumns, exportFileName);
   }
@@ -503,26 +564,37 @@ async function exportWithOriginalFormat(
   fileName: string
 ): Promise<void> {
   if (!originalFileInfo) return;
-  
-  const { workbook: originalWorkbook, sheetName, columnMapping, tables } = originalFileInfo;
-  
+
+  const { workbook: originalWorkbook, sheetName, columnMapping, tables: originalTables, headerRow } = originalFileInfo;
+
   // Clone workbook để không ảnh hưởng đến bản gốc
   const cloneBuffer = await originalWorkbook.xlsx.writeBuffer();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(cloneBuffer);
-  
+
   const worksheet = workbook.getWorksheet(sheetName);
   if (!worksheet) return;
-  
+
+  // Đảm bảo có ít nhất 1 table info (fallback nếu tables rỗng)
+  const tables: TableInfo[] = (originalTables && originalTables.length > 0)
+    ? originalTables
+    : [{
+      tableName: '',
+      headerRow: headerRow,
+      dataStartRow: headerRow + 1,
+      dataEndRow: worksheet.rowCount,
+    }];
+
   // Tạo mapping từ header sang column index
   const headerToCol = new Map<string, number>();
   columnMapping.forEach((colIndex, header) => {
     headerToCol.set(header.toUpperCase(), colIndex);
   });
-  
-  // Tìm cột cuối cùng
-  let lastCol = Math.max(...Array.from(columnMapping.values()));
-  
+
+  // Tìm cột cuối cùng (fallback = 0 nếu không có cột nào)
+  const colValues = Array.from(columnMapping.values());
+  let lastCol = colValues.length > 0 ? Math.max(...colValues) : 0;
+
   // Thêm các cột mới vào header của TẤT CẢ các bảng
   tables.forEach(table => {
     visibleColumns.forEach(col => {
@@ -545,99 +617,114 @@ async function exportWithOriginalFormat(
       }
     });
   });
-  
+
   // Tìm index cột cho công thức BMI và Thể trạng
   const weightColIdx = headerToCol.get('CÂN NẶNG');
   const heightColIdx = headerToCol.get('CHIỀU CAO');
   const bmiColIdx = headerToCol.get('BMI');
-  
+
   // Chuyển sang ký tự cột Excel
   const weightCol = weightColIdx ? getColumnLetter(weightColIdx - 1) : null;
   const heightCol = heightColIdx ? getColumnLetter(heightColIdx - 1) : null;
   const bmiCol = bmiColIdx ? getColumnLetter(bmiColIdx - 1) : null;
-  
+
   // Nhóm dữ liệu theo bảng (dựa trên _tableName)
   const dataByTable = new Map<string, PatientData[]>();
+  const defaultTableName = tables.length > 0 ? (tables[0].tableName || '') : '';
+
   data.forEach(patient => {
-    const tableName = String(patient['_tableName'] || tables[0]?.tableName || '');
+    const tableName = String(patient['_tableName'] || defaultTableName);
     if (!dataByTable.has(tableName)) {
       dataByTable.set(tableName, []);
     }
     dataByTable.get(tableName)!.push(patient);
   });
-  
+
   // Ghi dữ liệu cho từng bảng
   tables.forEach(table => {
     const tableData = dataByTable.get(table.tableName) || [];
-    
+
     // Lấy style mẫu từ dòng dữ liệu đầu tiên của bảng này
     const templateRow = worksheet.getRow(table.dataStartRow);
     const templateStyles = new Map<number, Partial<ExcelJS.Style>>();
-    templateRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      if (cell.style) {
-        templateStyles.set(colNumber, { ...cell.style });
-      }
-    });
-    
+    try {
+      templateRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        if (cell.style) {
+          templateStyles.set(colNumber, { ...cell.style });
+        }
+      });
+    } catch (e) {
+      console.warn('Error getting template styles for row', table.dataStartRow, e);
+    }
+
     // Ghi dữ liệu bệnh nhân vào đúng vị trí của bảng
     tableData.forEach((patient, rowIndex) => {
       const dataRowNum = table.dataStartRow + rowIndex;
       const row = worksheet.getRow(dataRowNum);
-      
+
       visibleColumns.forEach(col => {
         const colIndex = headerToCol.get(col.key.toUpperCase());
-        if (colIndex !== undefined) {
-          const cell = row.getCell(colIndex);
-          const value = patient[col.key];
-          
-          // Giữ nguyên style cũ hoặc dùng template style
-          const existingStyle = cell.style;
-          const templateStyle = templateStyles.get(colIndex);
-          
-          // Set công thức BMI nếu là cột BMI
-          if (col.key === 'BMI' && weightCol && heightCol) {
-            cell.value = {
-              formula: `IF(OR(${weightCol}${dataRowNum}="",${heightCol}${dataRowNum}=""),"",ROUND(${weightCol}${dataRowNum}/(${heightCol}${dataRowNum}^2),2))`,
-              result: value || undefined
-            };
-          }
-          // Set công thức Thể trạng nếu là cột THỂ TRẠNG
-          else if (col.key === 'THỂ TRẠNG' && bmiCol) {
-            cell.value = {
-              formula: `IF(${bmiCol}${dataRowNum}="","",IF(${bmiCol}${dataRowNum}<18,"Thiếu cân",IF(${bmiCol}${dataRowNum}<=25,"Bình thường","Thừa cân")))`,
-              result: value || undefined
-            };
-          }
-          // Set giá trị bình thường
-          else if (value !== undefined && value !== null && value !== '') {
-            cell.value = value;
-          } else {
-            cell.value = '';
-          }
-          
-          // Giữ style (uu tiên style hiện có, nếu không thì dùng template)
-          if (existingStyle && Object.keys(existingStyle).length > 0) {
-            cell.style = existingStyle;
-          } else if (templateStyle) {
-            cell.style = templateStyle;
+        if (colIndex !== undefined && colIndex > 0) {
+          try {
+            const cell = row.getCell(colIndex);
+            const value = patient[col.key];
+
+            // Giữ nguyên style cũ hoặc dùng template style
+            const existingStyle = cell.style;
+            const templateStyle = templateStyles.get(colIndex);
+
+            // Set công thức BMI nếu là cột BMI
+            if (col.key === 'BMI' && weightCol && heightCol) {
+              cell.value = {
+                formula: `IF(OR(${weightCol}${dataRowNum}="",${heightCol}${dataRowNum}=""),"",ROUND(${weightCol}${dataRowNum}/(${heightCol}${dataRowNum}^2),2))`,
+                result: value || undefined
+              };
+            }
+            // Set công thức Thể trạng nếu là cột THỂ TRẠNG
+            else if (col.key === 'THỂ TRẠNG' && bmiCol) {
+              cell.value = {
+                formula: `IF(${bmiCol}${dataRowNum}="","",IF(${bmiCol}${dataRowNum}<18,"Thiếu cân",IF(${bmiCol}${dataRowNum}<=25,"Bình thường","Thừa cân")))`,
+                result: value || undefined
+              };
+            }
+            // Set giá trị bình thường
+            else if (value !== undefined && value !== null && value !== '') {
+              cell.value = value;
+            } else {
+              cell.value = '';
+            }
+
+            // Giữ style (uu tiên style hiện có, nếu không thì dùng template)
+            if (existingStyle && Object.keys(existingStyle).length > 0) {
+              cell.style = existingStyle;
+            } else if (templateStyle) {
+              cell.style = templateStyle;
+            }
+          } catch (cellError) {
+            console.warn('Error setting cell value at row', dataRowNum, 'col', colIndex, cellError);
           }
         }
       });
     });
   });
-  
+
   // Xuất file
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  saveAs(blob, fileName);
+  try {
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, fileName);
+  } catch (writeError) {
+    console.error('Error writing workbook buffer:', writeError);
+    throw writeError;
+  }
 }
 
 /**
  * Tìm index cột theo key (0-based)
  */
 function findColumnIndex(columns: ColumnConfig[], key: string): number {
-  return columns.findIndex(col => 
-    col.key.toUpperCase() === key.toUpperCase() || 
+  return columns.findIndex(col =>
+    col.key.toUpperCase() === key.toUpperCase() ||
     col.header.toUpperCase() === key.toUpperCase()
   );
 }
@@ -665,21 +752,21 @@ async function exportNewFile(
 ): Promise<void> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(PREFERRED_SHEET_NAME);
-  
+
   // Tìm index các cột cần thiết cho công thức
   const weightColIdx = findColumnIndex(visibleColumns, 'Cân nặng');
   const heightColIdx = findColumnIndex(visibleColumns, 'Chiều cao');
   const bmiColIdx = findColumnIndex(visibleColumns, 'BMI');
   const physiqueColIdx = findColumnIndex(visibleColumns, 'THỂ TRẠNG');
-  
+
   // Chuyển sang ký tự cột Excel (1-based trong Excel)
   const weightCol = weightColIdx >= 0 ? getColumnLetter(weightColIdx) : null;
   const heightCol = heightColIdx >= 0 ? getColumnLetter(heightColIdx) : null;
   const bmiCol = bmiColIdx >= 0 ? getColumnLetter(bmiColIdx) : null;
-  
+
   // Thêm header
   const headerRow = worksheet.addRow(visibleColumns.map(col => col.header));
-  
+
   // Style cho header
   headerRow.eachCell((cell) => {
     cell.fill = {
@@ -702,7 +789,7 @@ async function exportNewFile(
       right: { style: 'thin' },
     };
   });
-  
+
   // Thêm dữ liệu
   data.forEach((patient, rowIndex) => {
     const excelRowNum = rowIndex + 2; // +2 vì header ở dòng 1, dữ liệu bắt đầu từ dòng 2
@@ -718,7 +805,7 @@ async function exportNewFile(
       return patient[col.key] ?? '';
     });
     const row = worksheet.addRow(rowData);
-    
+
     // Set công thức BMI: =ROUND(CânNặng/(ChiềuCao^2), 2)
     if (bmiColIdx >= 0 && weightCol && heightCol) {
       const bmiCell = row.getCell(bmiColIdx + 1);
@@ -727,7 +814,7 @@ async function exportNewFile(
         result: patient['BMI'] || undefined
       };
     }
-    
+
     // Set công thức Thể trạng: =IF(BMI<18,"Thiếu cân",IF(BMI<=25,"Bình thường","Thừa cân"))
     if (physiqueColIdx >= 0 && bmiCol) {
       const physiqueCell = row.getCell(physiqueColIdx + 1);
@@ -736,7 +823,7 @@ async function exportNewFile(
         result: patient['THỂ TRẠNG'] || undefined
       };
     }
-    
+
     row.eachCell((cell) => {
       cell.border = {
         top: { style: 'thin' },
@@ -750,13 +837,13 @@ async function exportNewFile(
       };
     });
   });
-  
+
   // Thiết lập độ rộng cột
   visibleColumns.forEach((col, index) => {
     const column = worksheet.getColumn(index + 1);
     column.width = col.width ? col.width / 7 : 15;
   });
-  
+
   // Xuất file
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

@@ -169,9 +169,9 @@ export default function Home() {
             setFileName(parsed.fileName || 'AutoSave');
             setIsSimpleFormat(parsed.isSimpleFormat || false);
             setLastSaved(new Date(parsed.savedAt));
-            
-            // Khôi phục workbook gốc từ IndexedDB
-            const restored = await restoreOriginalWorkbook();
+
+            // Khôi phục workbook gốc từ IndexedDB - chỉ nếu khớp fileName
+            const restored = await restoreOriginalWorkbook(parsed.fileName);
             if (restored) {
               showToast('📦 Đã khôi phục dữ liệu và format file gốc');
             } else {
@@ -184,7 +184,7 @@ export default function Home() {
       }
     };
     loadData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // AutoSave mỗi 30 giây khi có thay đổi
@@ -239,14 +239,14 @@ export default function Home() {
   }, [patients, columns, fileName, isSimpleFormat, showToast]);
 
   // Clear autosave
-  const handleClearAutoSave = useCallback(() => {
+  const handleClearAutoSave = useCallback(async () => {
     if (confirm('Xóa dữ liệu đã lưu? Thao tác này không thể hoàn tác.')) {
       localStorage.removeItem(AUTOSAVE_KEY);
       setPatients([]);
       setColumns(STANDARD_COLUMNS);
       setFileName('');
       setLastSaved(null);
-      resetOriginalFileInfo();
+      await resetOriginalFileInfo();
       showToast('🗑️ Đã xóa dữ liệu');
     }
   }, [showToast]);
@@ -287,7 +287,7 @@ export default function Home() {
       setFileName(result.fileName);
       setIsSimpleFormat(result.isSimpleFormat);
       setSelectedRow(null);
-      showToast(result.isSimpleFormat 
+      showToast(result.isSimpleFormat
         ? '✅ Đã import file danh sách đơn giản - Tự động thêm các cột khám'
         : '✅ Đã import file full cột - Giữ nguyên format gốc'
       );
@@ -313,10 +313,10 @@ export default function Home() {
       if (!hasOriginalWorkbook()) {
         await restoreOriginalWorkbook();
       }
-      
+
       // Truyền fileName để đảm bảo giữ tên file gốc
       await exportExcel(patients, columns, fileName || undefined);
-      
+
       if (hasOriginalWorkbook()) {
         showToast('✅ Đã xuất file với format gốc!');
       } else {
@@ -330,7 +330,7 @@ export default function Home() {
 
   // Toggle column visibility
   const handleColumnToggle = useCallback((key: string) => {
-    setColumns(prev => prev.map(col => 
+    setColumns(prev => prev.map(col =>
       col.key === key ? { ...col, visible: !col.visible } : col
     ));
   }, []);
@@ -346,8 +346,8 @@ export default function Home() {
   }, []);
 
   // Load sample data
-  const handleLoadSample = useCallback(() => {
-    resetOriginalFileInfo(); // Reset file gốc khi load mẫu
+  const handleLoadSample = useCallback(async () => {
+    await resetOriginalFileInfo(); // Reset file gốc khi load mẫu
     setPatients(SAMPLE_DATA);
     setFileName('Dữ liệu mẫu');
     setIsSimpleFormat(false);
@@ -373,7 +373,7 @@ export default function Home() {
   // Save patient
   const handleSave = useCallback((updatedPatient: PatientData) => {
     if (editingIndex !== null) {
-      setPatients(prev => prev.map((p, i) => 
+      setPatients(prev => prev.map((p, i) =>
         i === editingIndex ? updatedPatient : p
       ));
       showToast('✅ Đã lưu dữ liệu!');
@@ -383,7 +383,7 @@ export default function Home() {
   // Save and close
   const handleSaveAndClose = useCallback((updatedPatient: PatientData) => {
     if (editingIndex !== null) {
-      setPatients(prev => prev.map((p, i) => 
+      setPatients(prev => prev.map((p, i) =>
         i === editingIndex ? updatedPatient : p
       ));
     }
@@ -395,14 +395,14 @@ export default function Home() {
   // Add new column
   const handleAddColumn = useCallback(() => {
     if (!newColumnName.trim()) return;
-    
+
     const key = newColumnName.trim();
     // Check if column already exists
     if (columns.some(c => c.key === key)) {
       showToast('❌ Cột này đã tồn tại!');
       return;
     }
-    
+
     setColumns(prev => [...prev, { key, header: key, visible: true, width: 150 }]);
     // Add empty value for this column to all patients
     setPatients(prev => prev.map(p => ({ ...p, [key]: '' })));
@@ -414,7 +414,7 @@ export default function Home() {
   // Navigate between patients in editor
   const handleNavigate = useCallback((direction: 'prev' | 'next') => {
     if (editingIndex === null) return;
-    
+
     const newIndex = direction === 'prev' ? editingIndex - 1 : editingIndex + 1;
     if (newIndex >= 0 && newIndex < patients.length) {
       setEditingIndex(newIndex);
@@ -471,7 +471,7 @@ export default function Home() {
     // Kế thừa _tableName từ BN ở vị trí chèn (nếu có)
     const existingPatient = patients[atIndex];
     const tableName = existingPatient?.['_tableName'] || '';
-    
+
     const newPatient: PatientData = {
       CODE: '',
       'HỌ VÀ TÊN': '',
@@ -549,7 +549,7 @@ export default function Home() {
                 <Save className="h-3 w-3" />
                 Lưu
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -611,39 +611,39 @@ export default function Home() {
           {/* Add column button + help text */}
           <div className="mb-1 flex items-center justify-between">
             <div className="flex items-center gap-2">
-            {showAddColumn ? (
-              <div className="flex items-center gap-2">
-                <Input
-                  value={newColumnName}
-                  onChange={(e) => setNewColumnName(e.target.value)}
-                  placeholder="Tên cột mới..."
-                  className="w-48"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
-                />
-                <Button size="sm" className="h-6 text-xs" onClick={handleAddColumn}>
-                  Thêm
+              {showAddColumn ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newColumnName}
+                    onChange={(e) => setNewColumnName(e.target.value)}
+                    placeholder="Tên cột mới..."
+                    className="w-48"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
+                  />
+                  <Button size="sm" className="h-6 text-xs" onClick={handleAddColumn}>
+                    Thêm
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setShowAddColumn(false)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowAddColumn(true)}
+                  className="gap-1 h-6 text-xs text-gray-500"
+                >
+                  <PlusCircle className="h-3 w-3" />
+                  Thêm cột
                 </Button>
-                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setShowAddColumn(false)}>
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ) : (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowAddColumn(true)}
-                className="gap-1 h-6 text-xs text-gray-500"
-              >
-                <PlusCircle className="h-3 w-3" />
-                Thêm cột
-              </Button>
-            )}
+              )}
             </div>
             <span className="text-[10px] text-gray-400">
               ↑↓ hàng | ←→ cuộn | Alt+Kéo | Enter sửa
             </span>
           </div>
-          
+
           <PatientTable
             data={patients}
             columns={columns}
@@ -660,9 +660,9 @@ export default function Home() {
       </div>
 
       {/* Sonner Toast - luôn hiển thị trên modal */}
-      <Toaster 
-        position="top-center" 
-        richColors 
+      <Toaster
+        position="top-center"
+        richColors
         expand={true}
         toastOptions={{
           style: {
