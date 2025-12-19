@@ -628,16 +628,23 @@ async function exportWithOriginalFormat(
   const heightCol = heightColIdx ? getColumnLetter(heightColIdx - 1) : null;
   const bmiCol = bmiColIdx ? getColumnLetter(bmiColIdx - 1) : null;
 
-  // Nhóm dữ liệu theo bảng (dựa trên _tableName)
+  // Nhóm dữ liệu theo bảng (dựa trên _tableName) - với logic kế thừa từ BN trước đó
   const dataByTable = new Map<string, PatientData[]>();
   const defaultTableName = tables.length > 0 ? (tables[0].tableName || '') : '';
 
+  // Gán _tableName cho những patient chưa có bằng cách kế thừa từ patient trước đó
+  let lastTableName = defaultTableName;
   data.forEach(patient => {
-    const tableName = String(patient['_tableName'] || defaultTableName);
-    if (!dataByTable.has(tableName)) {
-      dataByTable.set(tableName, []);
+    const patientTableName = patient['_tableName'] as string | undefined;
+    if (patientTableName) {
+      lastTableName = patientTableName;
     }
-    dataByTable.get(tableName)!.push(patient);
+
+    const tableKey = lastTableName;
+    if (!dataByTable.has(tableKey)) {
+      dataByTable.set(tableKey, []);
+    }
+    dataByTable.get(tableKey)!.push(patient);
   });
 
   // Ghi dữ liệu cho từng bảng

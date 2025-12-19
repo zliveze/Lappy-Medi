@@ -6,7 +6,7 @@ import { importExcel, exportExcel, resetOriginalFileInfo, restoreOriginalWorkboo
 import { PatientTable } from '@/components/PatientTable';
 import { PatientEditor } from '@/components/PatientEditor';
 import { Button } from '@/components/ui/button';
-import { Upload, Download, Plus, Database, PlusCircle, X, Save, RefreshCw } from 'lucide-react';
+import { Upload, Download, Plus, Database, PlusCircle, X, Save, RefreshCw, Radiation, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { toast, Toaster } from 'sonner';
 
@@ -126,8 +126,16 @@ export default function Home() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Clipboard state for copy/paste patient data
+  const [copiedPatientData, setCopiedPatientData] = useState<PatientData | null>(null);
+
+  // Batch X-ray mode state
+  const [batchXrayMode, setBatchXrayMode] = useState(false);
+  const [selectedForBatchXray, setSelectedForBatchXray] = useState<number[]>([]);
+
   // AutoSave key
   const AUTOSAVE_KEY = 'mediexcel_autosave';
+  const CLIPBOARD_KEY = 'mediexcel_clipboard';
   const AUTOSAVE_INTERVAL = 30000; // 30 giây
 
   // Show toast notification - sử dụng sonner
@@ -180,6 +188,17 @@ export default function Home() {
           }
         } catch (e) {
           console.error('Error loading autosave:', e);
+        }
+      }
+
+      // Load clipboard data
+      const clipboardData = localStorage.getItem(CLIPBOARD_KEY);
+      if (clipboardData) {
+        try {
+          const parsed = JSON.parse(clipboardData);
+          setCopiedPatientData(parsed);
+        } catch (e) {
+          console.error('Error loading clipboard:', e);
         }
       }
     };
@@ -497,6 +516,106 @@ export default function Home() {
     setIsEditorOpen(true);
   }, [patients]);
 
+  // Copy patient data (medical data only, keep CODE/HỌ TÊN/NS/GT)
+  const handleCopyPatient = useCallback(() => {
+    if (editingIndex === null) return;
+    const patient = patients[editingIndex];
+    if (!patient) return;
+
+    // Copy only medical data (not basic info)
+    const medicalData: PatientData = {
+      'Cân nặng': patient['Cân nặng'],
+      'Chiều cao': patient['Chiều cao'],
+      BMI: patient['BMI'],
+      'THỂ TRẠNG': patient['THỂ TRẠNG'],
+      'KHÁM TỔNG QUÁT': patient['KHÁM TỔNG QUÁT'],
+      'PHÂN LOẠI SỨC KHỎE': patient['PHÂN LOẠI SỨC KHỎE'],
+      Xquang: patient['Xquang'],
+      'Siêu âm': patient['Siêu âm'],
+      'Điện tim': patient['Điện tim'],
+    };
+
+    setCopiedPatientData(medicalData);
+    localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(medicalData));
+    showToast('📋 Đã sao chép dữ liệu khám');
+  }, [editingIndex, patients, showToast]);
+
+  // Paste patient data
+  const handlePastePatient = useCallback(() => {
+    if (editingIndex === null || !copiedPatientData) return;
+
+    setPatients(prev => prev.map((p, i) => {
+      if (i === editingIndex) {
+        return {
+          ...p,
+          ...copiedPatientData,
+        };
+      }
+      return p;
+    }));
+    showToast('📥 Đã dán dữ liệu khám');
+  }, [editingIndex, copiedPatientData, showToast]);
+
+  // Clear patient medical data
+  const handleClearPatientData = useCallback(() => {
+    if (editingIndex === null) return;
+
+    setPatients(prev => prev.map((p, i) => {
+      if (i === editingIndex) {
+        return {
+          ...p,
+          'Cân nặng': '',
+          'Chiều cao': '',
+          BMI: '',
+          'THỂ TRẠNG': '',
+          'KHÁM TỔNG QUÁT': '',
+          'PHÂN LOẠI SỨC KHỎE': '',
+          Xquang: '',
+          'Siêu âm': '',
+          'Điện tim': '',
+        };
+      }
+      return p;
+    }));
+    showToast('🗑️ Đã xóa dữ liệu khám');
+  }, [editingIndex, showToast]);
+
+  // Toggle batch X-ray mode
+  const handleToggleBatchXrayMode = useCallback(() => {
+    setBatchXrayMode(prev => !prev);
+    setSelectedForBatchXray([]);
+  }, []);
+
+  // Toggle patient selection for batch X-ray
+  const handleToggleBatchXraySelection = useCallback((index: number) => {
+    setSelectedForBatchXray(prev => {
+      if (prev.includes(index)) {
+        return prev.filter(i => i !== index);
+      }
+      return [...prev, index];
+    });
+  }, []);
+
+  // Apply batch X-ray default
+  const handleApplyBatchXray = useCallback(() => {
+    if (selectedForBatchXray.length === 0) {
+      showToast('⚠️ Chưa chọn bệnh nhân nào');
+      return;
+    }
+
+    const defaultXray = ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang';
+    setPatients(prev => prev.map((p, i) => {
+      if (selectedForBatchXray.includes(i)) {
+        return { ...p, Xquang: defaultXray };
+      }
+      return p;
+    }));
+
+    showToast(`✅ Đã đặt Xquang mặc định cho ${selectedForBatchXray.length} bệnh nhân`);
+    setBatchXrayMode(false);
+    setSelectedForBatchXray([]);
+  }, [selectedForBatchXray, showToast]);
+
   return (
     <main className="min-h-screen bg-emerald-50/30">
       {/* Compact Header */}
@@ -590,6 +709,40 @@ export default function Home() {
                 Thêm
               </Button>
 
+              {/* Batch X-ray button */}
+              {batchXrayMode ? (
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    onClick={handleApplyBatchXray}
+                    className="gap-1 h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Check className="h-3 w-3" />
+                    Xác nhận ({selectedForBatchXray.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleToggleBatchXrayMode}
+                    className="h-7 text-xs text-gray-500"
+                  >
+                    Hủy
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleToggleBatchXrayMode}
+                  disabled={patients.length === 0}
+                  className="gap-1 h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+                  title="Đặt Xquang mặc định hàng loạt"
+                >
+                  <Radiation className="h-3 w-3" />
+                  Xquang
+                </Button>
+              )}
+
               {/* Clear data button */}
               <Button
                 variant="ghost"
@@ -655,6 +808,9 @@ export default function Home() {
             onInsertPatient={handleInsertPatient}
             selectedRow={selectedRow}
             onSelectRow={setSelectedRow}
+            batchXrayMode={batchXrayMode}
+            selectedForBatchXray={selectedForBatchXray}
+            onToggleBatchXray={handleToggleBatchXraySelection}
           />
         </div>
       </div>
@@ -686,6 +842,10 @@ export default function Home() {
         canNavigateNext={editingIndex !== null && editingIndex < patients.length - 1}
         currentIndex={editingIndex ?? 0}
         totalCount={patients.length}
+        onCopy={handleCopyPatient}
+        onPaste={handlePastePatient}
+        onClearData={handleClearPatientData}
+        canPaste={copiedPatientData !== null}
       />
     </main>
   );

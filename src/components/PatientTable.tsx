@@ -17,6 +17,10 @@ interface PatientTableProps {
   onInsertPatient: (atIndex: number) => void;
   selectedRow: number | null;
   onSelectRow: (index: number | null) => void;
+  // Batch X-ray mode
+  batchXrayMode?: boolean;
+  selectedForBatchXray?: number[];
+  onToggleBatchXray?: (index: number) => void;
 }
 
 export function PatientTable({
@@ -30,13 +34,16 @@ export function PatientTable({
   onInsertPatient,
   selectedRow,
   onSelectRow,
+  batchXrayMode,
+  selectedForBatchXray,
+  onToggleBatchXray,
 }: PatientTableProps) {
   const visibleColumns = columns.filter((col) => col.visible);
   const [draggedColumn, setDraggedColumn] = useState<number | null>(null);
   const [showColumnToggle, setShowColumnToggle] = useState(false);
   const [showActions, setShowActions] = useState(false); // Toggle hiển thị các nút action
   const tableRef = useRef<HTMLDivElement>(null);
-  
+
   // Pan/drag state for scrolling
   const [isPanning, setIsPanning] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
@@ -74,7 +81,7 @@ export function PatientTable({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!tableRef.current) return;
       const scrollAmount = 100;
-      
+
       switch (e.key) {
         case 'ArrowLeft':
           tableRef.current.scrollLeft -= scrollAmount;
@@ -142,7 +149,7 @@ export function PatientTable({
           {showColumnToggle ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           {showColumnToggle ? 'Ẩn' : 'Hiển thị'} cột ({visibleColumns.length}/{columns.length})
         </button>
-        
+
         {/* Toggle thao tác */}
         <button
           onClick={() => setShowActions(!showActions)}
@@ -168,7 +175,7 @@ export function PatientTable({
       )}
 
       {/* Table */}
-      <div 
+      <div
         ref={tableRef}
         className={`flex-1 overflow-auto border rounded ${isPanning ? 'cursor-grabbing' : 'cursor-default'}`}
         style={{ touchAction: 'pan-x pan-y' }}
@@ -180,7 +187,13 @@ export function PatientTable({
         <table className="w-full border-collapse min-w-max text-xs">
           <thead className="bg-emerald-600 text-white sticky top-0 z-10">
             <tr>
-              {showActions && (
+              {/* Batch X-ray checkbox column header */}
+              {batchXrayMode && (
+                <th className="px-2 py-1 text-center font-medium border-r border-emerald-500 sticky left-0 bg-blue-600 z-20 w-10">
+                  ✓
+                </th>
+              )}
+              {showActions && !batchXrayMode && (
                 <th className="px-1 py-1 text-center font-medium border-r border-emerald-500 sticky left-0 bg-emerald-600 z-20 w-24">
                   Thao tác
                 </th>
@@ -192,9 +205,8 @@ export function PatientTable({
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, idx)}
-                  className={`px-1 py-1 text-left font-medium border-r border-emerald-500 cursor-move select-none ${
-                    draggedColumn === idx ? 'opacity-50 bg-emerald-700' : ''
-                  }`}
+                  className={`px-1 py-1 text-left font-medium border-r border-emerald-500 cursor-move select-none ${draggedColumn === idx ? 'opacity-50 bg-emerald-700' : ''
+                    }`}
                   style={{ minWidth: col.width ? col.width * 0.7 : 70 }}
                 >
                   <div className="flex items-center gap-0.5">
@@ -218,7 +230,7 @@ export function PatientTable({
                 const currentTableName = patient['_tableName'] as string | undefined;
                 const prevTableName = index > 0 ? (data[index - 1]['_tableName'] as string | undefined) : undefined;
                 const isNewTable = currentTableName && currentTableName !== prevTableName;
-                
+
                 return (
                   <React.Fragment key={index}>
                     {/* Dòng phân cách bảng mới */}
@@ -230,110 +242,118 @@ export function PatientTable({
                       </tr>
                     )}
                     <tr
-                      className={`border-b hover:bg-emerald-50 cursor-pointer ${
-                        selectedRow === index ? 'bg-emerald-100' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                      }`}
-                      onClick={() => onSelectRow(selectedRow === index ? null : index)}
-                      onDoubleClick={() => onEdit(index)}
+                      className={`border-b hover:bg-emerald-50 cursor-pointer ${selectedRow === index ? 'bg-emerald-100' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                        }${batchXrayMode ? ' bg-blue-50/30' : ''}`}
+                      onClick={() => batchXrayMode && onToggleBatchXray ? onToggleBatchXray(index) : onSelectRow(selectedRow === index ? null : index)}
+                      onDoubleClick={() => !batchXrayMode && onEdit(index)}
                     >
-                  {/* Action buttons - chỉ hiển thị khi showActions */}
-                  {showActions && (
-                    <td className="px-1 py-0.5 text-center border-r sticky left-0 bg-inherit z-10 w-24">
-                      <div className="flex items-center justify-center gap-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-gray-500 hover:bg-gray-100"
-                          onClick={(e) => { e.stopPropagation(); onMovePatient(index, index - 1); }}
-                          disabled={index === 0}
-                          title="Di chuyển lên"
-                        >
-                          <ArrowUp className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-gray-500 hover:bg-gray-100"
-                          onClick={(e) => { e.stopPropagation(); onMovePatient(index, index + 1); }}
-                          disabled={index === data.length - 1}
-                          title="Di chuyển xuống"
-                        >
-                          <ArrowDown className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-blue-500 hover:bg-blue-100"
-                          onClick={(e) => { e.stopPropagation(); onInsertPatient(index); }}
-                          title="Chèn BN mới"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-emerald-600 hover:bg-emerald-100"
-                          onClick={(e) => { e.stopPropagation(); onEdit(index); }}
-                          title="Sửa"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-red-500 hover:bg-red-100"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Xóa bệnh nhân này?')) onDelete(index);
-                          }}
-                          title="Xóa"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  )}
-                  {visibleColumns.map((col) => {
-                    // Giới hạn chiều ngang theo loại cột
-                    const maxWidth = col.key.includes('KHÁM') || col.key.includes('Siêu âm') || col.key.includes('Xquang') 
-                      ? 300 
-                      : col.width ? col.width * 0.8 : 120;
-                    
-                    return (
-                      <td
-                        key={col.key}
-                        className="px-1 py-0.5 border-r border-gray-200 align-top"
-                        style={{ 
-                          minWidth: col.width ? col.width * 0.5 : 60,
-                          maxWidth: maxWidth,
-                        }}
-                      >
-                        {col.key === 'THỂ TRẠNG' ? (
-                          <span className={`font-medium ${
-                            String(patient[col.key]).includes('Bình thường') ? 'text-emerald-600' :
-                            String(patient[col.key]).includes('Thừa cân') ? 'text-orange-600' :
-                            String(patient[col.key]).includes('Thiếu cân') ? 'text-yellow-600' : ''
-                          }`}>
-                            {patient[col.key] || ''}
-                          </span>
-                        ) : col.key === 'PHÂN LOẠI SỨC KHỎẺ' ? (
-                          <span className={`font-medium ${
-                            String(patient[col.key]).includes('I') && !String(patient[col.key]).includes('II') ? 'text-emerald-600' :
-                            String(patient[col.key]).includes('II') && !String(patient[col.key]).includes('III') ? 'text-teal-600' :
-                            String(patient[col.key]).includes('III') ? 'text-yellow-600' :
-                            String(patient[col.key]).includes('IV') ? 'text-orange-600' :
-                            String(patient[col.key]).includes('V') ? 'text-red-600' : ''
-                          }`}>
-                            {patient[col.key] || ''}
-                          </span>
-                        ) : (
-                          <div className="whitespace-pre-wrap break-words text-gray-700">
-                            {patient[col.key] ?? ''}
+                      {/* Batch X-ray checkbox */}
+                      {batchXrayMode && (
+                        <td className="px-2 py-0.5 text-center border-r sticky left-0 bg-inherit z-10 w-10">
+                          <Checkbox
+                            checked={selectedForBatchXray?.includes(index) || false}
+                            onCheckedChange={() => onToggleBatchXray?.(index)}
+                            className="h-4 w-4"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                      )}
+                      {/* Action buttons - chỉ hiển thị khi showActions và không trong batch mode */}
+                      {showActions && !batchXrayMode && (
+                        <td className="px-1 py-0.5 text-center border-r sticky left-0 bg-inherit z-10 w-24">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 text-gray-500 hover:bg-gray-100"
+                              onClick={(e) => { e.stopPropagation(); onMovePatient(index, index - 1); }}
+                              disabled={index === 0}
+                              title="Di chuyển lên"
+                            >
+                              <ArrowUp className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 text-gray-500 hover:bg-gray-100"
+                              onClick={(e) => { e.stopPropagation(); onMovePatient(index, index + 1); }}
+                              disabled={index === data.length - 1}
+                              title="Di chuyển xuống"
+                            >
+                              <ArrowDown className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 text-blue-500 hover:bg-blue-100"
+                              onClick={(e) => { e.stopPropagation(); onInsertPatient(index); }}
+                              title="Chèn BN mới"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 text-emerald-600 hover:bg-emerald-100"
+                              onClick={(e) => { e.stopPropagation(); onEdit(index); }}
+                              title="Sửa"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 text-red-500 hover:bg-red-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm('Xóa bệnh nhân này?')) onDelete(index);
+                              }}
+                              title="Xóa"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
-                        )}
-                      </td>
-                    );
-                  })}
+                        </td>
+                      )}
+                      {visibleColumns.map((col) => {
+                        // Giới hạn chiều ngang theo loại cột
+                        const maxWidth = col.key.includes('KHÁM') || col.key.includes('Siêu âm') || col.key.includes('Xquang')
+                          ? 300
+                          : col.width ? col.width * 0.8 : 120;
+
+                        return (
+                          <td
+                            key={col.key}
+                            className="px-1 py-0.5 border-r border-gray-200 align-top"
+                            style={{
+                              minWidth: col.width ? col.width * 0.5 : 60,
+                              maxWidth: maxWidth,
+                            }}
+                          >
+                            {col.key === 'THỂ TRẠNG' ? (
+                              <span className={`font-medium ${String(patient[col.key]).includes('Bình thường') ? 'text-emerald-600' :
+                                String(patient[col.key]).includes('Thừa cân') ? 'text-orange-600' :
+                                  String(patient[col.key]).includes('Thiếu cân') ? 'text-yellow-600' : ''
+                                }`}>
+                                {patient[col.key] || ''}
+                              </span>
+                            ) : col.key === 'PHÂN LOẠI SỨC KHỎẺ' ? (
+                              <span className={`font-medium ${String(patient[col.key]).includes('I') && !String(patient[col.key]).includes('II') ? 'text-emerald-600' :
+                                String(patient[col.key]).includes('II') && !String(patient[col.key]).includes('III') ? 'text-teal-600' :
+                                  String(patient[col.key]).includes('III') ? 'text-yellow-600' :
+                                    String(patient[col.key]).includes('IV') ? 'text-orange-600' :
+                                      String(patient[col.key]).includes('V') ? 'text-red-600' : ''
+                                }`}>
+                                {patient[col.key] || ''}
+                              </span>
+                            ) : (
+                              <div className="whitespace-pre-wrap break-words text-gray-700">
+                                {patient[col.key] ?? ''}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   </React.Fragment>
                 );

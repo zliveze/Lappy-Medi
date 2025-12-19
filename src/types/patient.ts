@@ -45,12 +45,16 @@ export const BLOOD_PRESSURE_OPTIONS = [
   'Tăng HA có điều trị',
   'Tăng HA không điều trị',
   'TD tăng HA',
+  'tăng HA',
 ];
 
 // Options bệnh lý mắt - dùng chung (2 mắt)
 export const EYE_OPTIONS_BOTH = [
   'Đục thủy tinh thể 2 mắt',
   '2 mắt lão thị',
+  '2 mắt mộng thịt độ I',
+  '2 mắt mộng thịt độ II',
+  '2 mắt mộng thịt độ III',
 ];
 
 // Options bệnh lý mắt - riêng từng mắt
@@ -73,12 +77,19 @@ export const ENT_OPTIONS = [
   'Amidan quá phát',
   'Viêm họng hạt',
   'Viêm mũi dị ứng',
+
 ];
 
 export const DENTAL_OPTIONS = [
   'Sâu răng',
   'Mất răng',
   'Vôi răng',
+  'Hàm tháo lắp',
+  'Mòn cổ chân răng',
+  'Sâu răng đã điều trị',
+  'Sâu răng chưa điều trị',
+  'Mất răng đã điều trị',
+  'Mất răng chưa điều trị',
 ];
 
 export const LIVER_OPTIONS = [
@@ -102,7 +113,7 @@ export const ULTRASOUND_ABDOMEN_NOTE_OPTIONS = [
   'nang thận 2 bên',
   'Phì đại tiền liệt tuyến',
   'nốt vôi tiền liệt tuyến',
- ];
+];
 
 export const ULTRASOUND_BREAST_OPTIONS = [
   'sang thương vú trái BIRADS II',
@@ -110,7 +121,7 @@ export const ULTRASOUND_BREAST_OPTIONS = [
   'sang thương 2 vú BIRADS II',
   'nang tuyến vú',
   'u xơ tuyến vú',
- ];
+];
 
 export const VISION_OPTIONS = [
   '10/10', '9/10', '8/10', '7/10', '6/10',
