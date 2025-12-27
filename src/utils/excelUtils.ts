@@ -708,8 +708,11 @@ async function exportWithOriginalFormat(
               cell.style = templateStyle;
             }
 
-            // Highlight missing data với màu vàng
-            if (isMissingData(patient, col.key)) {
+            // Highlight missing data với màu vàng - chỉ khi bệnh nhân đã phân loại VÀ ô thiếu dữ liệu
+            // KHÔNG override style nếu ô đã có dữ liệu
+            const patientValue = patient[col.key];
+            const isEmpty = patientValue === undefined || patientValue === null || String(patientValue).trim() === '';
+            if (isMissingData(patient, col.key) && isEmpty) {
               cell.fill = {
                 type: 'pattern',
                 pattern: 'solid',
@@ -852,14 +855,18 @@ async function exportNewFile(
         wrapText: true,
       };
 
-      // Highlight missing data với màu vàng
+      // Highlight missing data với màu vàng - chỉ khi bệnh nhân đã phân loại VÀ ô thiếu dữ liệu
       const colKey = visibleColumns[colNumber - 1]?.key;
-      if (colKey && isMissingData(patient, colKey)) {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFFFF00' }, // Màu vàng
-        };
+      if (colKey) {
+        const patientValue = patient[colKey];
+        const isEmpty = patientValue === undefined || patientValue === null || String(patientValue).trim() === '';
+        if (isMissingData(patient, colKey) && isEmpty) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFFF00' }, // Màu vàng
+          };
+        }
       }
     });
   });
