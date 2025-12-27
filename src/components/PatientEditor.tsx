@@ -530,13 +530,18 @@ export function PatientEditor({
 
     // 2. Kiểm tra khám tổng quát - nếu KHÔNG phải "chưa phát hiện bệnh lý"
     if (!exam.noPathologyFound) {
-      // Có nội khoa với tình trạng tăng HA
-      if (exam.internalEnabled && exam.bpCondition) {
+      // Có nội khoa với tình trạng tăng HA hoặc ghi chú
+      if (exam.internalEnabled && (exam.bpCondition || exam.bpNote)) {
         abnormalityCount++;
       }
-      // Có bệnh lý mắt
-      if (exam.eyeEnabled && (exam.eyeConditionsBoth.length > 0 || exam.eyeConditionsLeft.length > 0 || exam.eyeConditionsRight.length > 0 || exam.eyeNote)) {
-        abnormalityCount++;
+      // Có bệnh lý mắt hoặc thị lực giảm (< 10/10) khi không đeo kính
+      if (exam.eyeEnabled) {
+        const hasEyeConditions = exam.eyeConditionsBoth.length > 0 || exam.eyeConditionsLeft.length > 0 || exam.eyeConditionsRight.length > 0 || exam.eyeNote;
+        // Thị lực giảm khi KHÔNG đeo kính (< 10/10)
+        const hasReducedVision = !exam.hasGlasses && (exam.visionLeft !== '10/10' || exam.visionRight !== '10/10');
+        if (hasEyeConditions || hasReducedVision) {
+          abnormalityCount++;
+        }
       }
       // Có bệnh lý TMH
       if (exam.entEnabled && (exam.entConditions.length > 0 || exam.entNote)) {
