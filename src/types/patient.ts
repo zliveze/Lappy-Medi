@@ -42,7 +42,7 @@ export const STANDARD_COLUMN_KEYS = STANDARD_COLUMNS.map(c => c.key);
 
 // Options cho các trường khám
 export const BLOOD_PRESSURE_OPTIONS = [
-  'Tăng HA có điều trị',
+  'Tăng HA đang điều trị',
   'Tăng HA không điều trị',
   'TD tăng HA',
   'tăng HA',

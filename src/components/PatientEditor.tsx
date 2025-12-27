@@ -229,6 +229,8 @@ export function PatientEditor({
 
       // Parse X-Quang
       // Tách dòng và loại bỏ prefix ' - '
+      // Also filter out default text so input stays empty
+      const defaultXrayText = 'Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang';
       const parsedXrayNotes = xrayText
         .split('\n')
         .map(line => {
@@ -237,7 +239,7 @@ export function PatientEditor({
           else if (cleanLine.startsWith('-')) cleanLine = cleanLine.substring(1).trim();
           return cleanLine;
         })
-        .filter(line => line);
+        .filter(line => line && line.toLowerCase() !== defaultXrayText.toLowerCase());
 
       if (parsedXrayNotes.length === 0) parsedXrayNotes.push('');
 
@@ -395,9 +397,14 @@ export function PatientEditor({
             newExam.bpReadings = [{ systolic: bpMatch[1], diastolic: bpMatch[2] }];
           }
         }
-        BLOOD_PRESSURE_OPTIONS.forEach(opt => {
-          if (line.toLowerCase().includes(opt.toLowerCase())) newExam.bpCondition = opt;
-        });
+        // Check longer options first to avoid false matches (e.g., "tăng HA" matching "Tăng HA đang điều trị")
+        const sortedBpOptions = [...BLOOD_PRESSURE_OPTIONS].sort((a, b) => b.length - a.length);
+        for (const opt of sortedBpOptions) {
+          if (line.toLowerCase().includes(opt.toLowerCase())) {
+            newExam.bpCondition = opt;
+            break; // Take the first (longest) match
+          }
+        }
         // Parse ghi chú nội khoa - phần text sau các thông tin đã parse
         let noteText = line.replace(/^.*?:/, '').trim();
         BLOOD_PRESSURE_OPTIONS.forEach(opt => {
@@ -656,13 +663,16 @@ export function PatientEditor({
   const buildUpdatedPatient = (): PatientData | null => {
     if (!patient) return null;
 
-    // Build Xray string
+    // Build Xray string - use default if enabled but no custom notes
     let xrayString = '';
-    if (imaging.xrayEnabled && imaging.xrayNotes.length > 0) {
-      xrayString = imaging.xrayNotes
-        .filter(n => n && n.trim())
-        .map(n => ` - ${n}`)
-        .join('\n');
+    if (imaging.xrayEnabled) {
+      const validNotes = imaging.xrayNotes.filter(n => n && n.trim());
+      if (validNotes.length > 0) {
+        xrayString = validNotes.map(n => ` - ${n}`).join('\n');
+      } else {
+        // Default value when no notes entered
+        xrayString = ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang';
+      }
     }
 
     return {
@@ -1368,7 +1378,13 @@ export function PatientEditor({
                               newNotes[idx] = e.target.value;
                               setImaging({ ...imaging, xrayNotes: newNotes });
                             }}
-                            placeholder={`Kết quả X-Quang ${idx + 1}...`}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                setImaging({ ...imaging, xrayNotes: [...imaging.xrayNotes, ''] });
+                              }
+                            }}
+                            placeholder={idx === 0 ? 'Mặc định: Hình ảnh tim, phổi chưa ghi nhận bất thường' : `Ghi chú ${idx + 1}...`}
                           />
                           {imaging.xrayNotes.length > 1 && (
                             <Button
