@@ -127,6 +127,7 @@ export function PatientEditor({
   const [bmi, setBmi] = useState('');
   const [physique, setPhysique] = useState({ text: '', color: '' });
   const [classification, setClassification] = useState('');
+  const [isClassificationManual, setIsClassificationManual] = useState(false); // Theo dõi nếu user chọn tay
 
   // Exam state
   const [exam, setExam] = useState<ExamState>({
@@ -200,7 +201,10 @@ export function PatientEditor({
       // Thể lực
       setWeight(String(patient['Cân nặng'] || ''));
       setHeight(String(patient['Chiều cao'] || ''));
-      setClassification(String(patient['PHÂN LOẠI SỨC KHỎE'] || ''));
+      const existingClassification = String(patient['PHÂN LOẠI SỨC KHỎE'] || '');
+      setClassification(existingClassification);
+      // Nếu đã có phân loại từ trước thì coi như user đã chọn tay
+      setIsClassificationManual(!!existingClassification);
 
       // Calculate BMI if weight and height exist
       const w = parseFloat(String(patient['Cân nặng'] || '0'));
@@ -510,6 +514,90 @@ export function PatientEditor({
       setPhysique({ text: '', color: '' });
     }
   }, [weight, height]);
+
+  // Auto-calculate classification based on exam and imaging data
+  // Chỉ tự động nếu user chưa chọn tay
+  useEffect(() => {
+    if (isClassificationManual) return; // User đã chọn tay, không tự động
+
+    // Đếm số bất thường
+    let abnormalityCount = 0;
+
+    // 1. Kiểm tra thể trạng (Cân nặng bình thường)
+    if (physique.text && physique.text !== 'Bình thường') {
+      abnormalityCount++;
+    }
+
+    // 2. Kiểm tra khám tổng quát - nếu KHÔNG phải "chưa phát hiện bệnh lý"
+    if (!exam.noPathologyFound) {
+      // Có nội khoa với tình trạng tăng HA
+      if (exam.internalEnabled && exam.bpCondition) {
+        abnormalityCount++;
+      }
+      // Có bệnh lý mắt
+      if (exam.eyeEnabled && (exam.eyeConditionsBoth.length > 0 || exam.eyeConditionsLeft.length > 0 || exam.eyeConditionsRight.length > 0 || exam.eyeNote)) {
+        abnormalityCount++;
+      }
+      // Có bệnh lý TMH
+      if (exam.entEnabled && (exam.entConditions.length > 0 || exam.entNote)) {
+        abnormalityCount++;
+      }
+      // Có bệnh lý RHM (sức nhai < 100% hoặc có bệnh)
+      if (exam.dentalEnabled && (exam.chewingPower < 100 || exam.dentalConditions.length > 0 || exam.dentalNote)) {
+        abnormalityCount++;
+      }
+      // Ngoại khoa bất thường
+      if (exam.surgeryEnabled && exam.surgery && exam.surgery !== 'Bình thường') {
+        abnormalityCount++;
+      }
+      // Da liễu bất thường
+      if (exam.dermaEnabled && exam.dermatology && exam.dermatology !== 'Bình thường') {
+        abnormalityCount++;
+      }
+    }
+
+    // 3. Kiểm tra cận lâm sàng
+    // Xquang - nếu có ghi chú khác mặc định
+    if (imaging.xrayEnabled) {
+      const hasCustomXray = imaging.xrayNotes.some(n => n && n.trim() && !n.toLowerCase().includes('chưa ghi nhận bất thường'));
+      if (hasCustomXray) abnormalityCount++;
+    }
+
+    // Siêu âm bụng - có bệnh lý gan/thận hoặc ghi chú
+    if (imaging.abdomenEnabled) {
+      if (imaging.liverConditions.length > 0 || imaging.kidneyConditions.length > 0 || imaging.abdomenNote) {
+        abnormalityCount++;
+      }
+    }
+
+    // Siêu âm tuyến giáp có ghi chú
+    if (imaging.thyroidEnabled && imaging.thyroid) {
+      abnormalityCount++;
+    }
+
+    // Siêu âm vú có ghi chú
+    if (imaging.breastEnabled && imaging.breast) {
+      abnormalityCount++;
+    }
+
+    // Siêu âm phụ khoa có ghi chú
+    if (imaging.gynecologyEnabled && imaging.gynecology) {
+      abnormalityCount++;
+    }
+
+    // Điện tim - có ghi chú (nhưng KHÔNG tính vào bất thường theo yêu cầu user)
+    // => Điện tim chỉ cần có nhịp xoang, trục điện tim, ghi chú thêm không ảnh hưởng
+
+    // Quyết định phân loại
+    if (abnormalityCount === 0 && physique.text === 'Bình thường' && (exam.noPathologyFound || !exam.internalEnabled)) {
+      // Tất cả bình thường -> Loại I
+      setClassification('I');
+    } else if (abnormalityCount >= 1) {
+      // Có 1 bất thường trở lên -> Loại II
+      setClassification('II');
+    }
+    // Nếu chưa đủ điều kiện thì không tự động set
+  }, [physique, exam, imaging, isClassificationManual]);
 
   // Build general exam text - only include enabled sections
   const buildGeneralExam = useCallback((): string => {
@@ -1372,6 +1460,7 @@ export function PatientEditor({
                       {imaging.xrayNotes.map((note, idx) => (
                         <div key={idx} className="flex gap-2 items-center">
                           <Input
+                            id={`xray-note-${idx}`}
                             value={note}
                             onChange={(e) => {
                               const newNotes = [...imaging.xrayNotes];
@@ -1381,7 +1470,13 @@ export function PatientEditor({
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();
+                                const newIndex = imaging.xrayNotes.length;
                                 setImaging({ ...imaging, xrayNotes: [...imaging.xrayNotes, ''] });
+                                // Focus vào input mới sau khi DOM được cập nhật
+                                setTimeout(() => {
+                                  const newInput = document.getElementById(`xray-note-${newIndex}`);
+                                  if (newInput) newInput.focus();
+                                }, 50);
                               }
                             }}
                             placeholder={idx === 0 ? 'Mặc định: Hình ảnh tim, phổi chưa ghi nhận bất thường' : `Ghi chú ${idx + 1}...`}
@@ -1404,7 +1499,15 @@ export function PatientEditor({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setImaging({ ...imaging, xrayNotes: [...imaging.xrayNotes, ''] })}
+                        onClick={() => {
+                          const newIndex = imaging.xrayNotes.length;
+                          setImaging({ ...imaging, xrayNotes: [...imaging.xrayNotes, ''] });
+                          // Focus vào input mới
+                          setTimeout(() => {
+                            const newInput = document.getElementById(`xray-note-${newIndex}`);
+                            if (newInput) newInput.focus();
+                          }, 50);
+                        }}
                         className="w-full border-dashed"
                       >
                         + Thêm kết quả/ghi chú
