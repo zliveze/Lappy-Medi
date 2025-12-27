@@ -149,3 +149,37 @@ export const CLASSIFICATION_OPTIONS = [
   'IV',
   'V',
 ];
+
+// Các cột cần kiểm tra khi bệnh nhân đã có phân loại sức khỏe
+export const REQUIRED_COLUMNS_FOR_CLASSIFIED = [
+  'Cân nặng',
+  'Chiều cao',
+  'BMI',
+  'THỂ TRẠNG',
+  'KHÁM TỔNG QUÁT',
+  'Xquang',
+  'Siêu âm',
+  'Điện tim',
+];
+
+/**
+ * Kiểm tra xem bệnh nhân đã có phân loại sức khỏe chưa
+ */
+export function hasClassification(patient: PatientData): boolean {
+  const classification = patient['PHÂN LOẠI SỨC KHỎE'];
+  return classification !== undefined && classification !== null && String(classification).trim() !== '';
+}
+
+/**
+ * Kiểm tra xem một cột có thiếu dữ liệu không (cho bệnh nhân đã phân loại)
+ */
+export function isMissingData(patient: PatientData, columnKey: string): boolean {
+  // Chỉ highlight nếu bệnh nhân đã có phân loại
+  if (!hasClassification(patient)) return false;
+
+  // Chỉ kiểm tra các cột trong danh sách cần thiết
+  if (!REQUIRED_COLUMNS_FOR_CLASSIFIED.includes(columnKey)) return false;
+
+  const value = patient[columnKey];
+  return value === undefined || value === null || String(value).trim() === '';
+}

@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { PatientData, ColumnConfig, STANDARD_COLUMN_KEYS, STANDARD_COLUMNS } from '@/types/patient';
+import { PatientData, ColumnConfig, STANDARD_COLUMN_KEYS, STANDARD_COLUMNS, isMissingData } from '@/types/patient';
 
 const HEADER_KEYWORDS = ['CODE', 'HỌ VÀ TÊN'];
 const PREFERRED_SHEET_NAME = 'DS';
@@ -707,6 +707,15 @@ async function exportWithOriginalFormat(
             } else if (templateStyle) {
               cell.style = templateStyle;
             }
+
+            // Highlight missing data với màu vàng
+            if (isMissingData(patient, col.key)) {
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFFF00' }, // Màu vàng
+              };
+            }
           } catch (cellError) {
             console.warn('Error setting cell value at row', dataRowNum, 'col', colIndex, cellError);
           }
@@ -831,7 +840,7 @@ async function exportNewFile(
       };
     }
 
-    row.eachCell((cell) => {
+    row.eachCell((cell, colNumber) => {
       cell.border = {
         top: { style: 'thin' },
         left: { style: 'thin' },
@@ -842,6 +851,16 @@ async function exportNewFile(
         vertical: 'top',
         wrapText: true,
       };
+
+      // Highlight missing data với màu vàng
+      const colKey = visibleColumns[colNumber - 1]?.key;
+      if (colKey && isMissingData(patient, colKey)) {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFF00' }, // Màu vàng
+        };
+      }
     });
   });
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { PatientData, ColumnConfig } from '@/types/patient';
+import { PatientData, ColumnConfig, isMissingData } from '@/types/patient';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Edit, Trash2, GripVertical, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Plus, MoreHorizontal } from 'lucide-react';
@@ -321,14 +321,18 @@ export function PatientTable({
                           ? 300
                           : col.width ? col.width * 0.8 : 120;
 
+                        // Kiểm tra nếu ô thiếu dữ liệu (bệnh nhân đã phân loại)
+                        const isMissing = isMissingData(patient, col.key);
+
                         return (
                           <td
                             key={col.key}
-                            className="px-1 py-0.5 border-r border-gray-200 align-top"
+                            className={`px-1 py-0.5 border-r border-gray-200 align-top ${isMissing ? 'bg-yellow-200' : ''}`}
                             style={{
                               minWidth: col.width ? col.width * 0.5 : 60,
                               maxWidth: maxWidth,
                             }}
+                            title={isMissing ? 'Thiếu dữ liệu' : undefined}
                           >
                             {col.key === 'THỂ TRẠNG' ? (
                               <span className={`font-medium ${String(patient[col.key]).includes('Bình thường') ? 'text-emerald-600' :
