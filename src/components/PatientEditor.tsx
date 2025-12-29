@@ -528,20 +528,23 @@ export function PatientEditor({
       abnormalityCount++;
     }
 
-    // 2. Kiểm tra khám tổng quát - nếu KHÔNG phải "chưa phát hiện bệnh lý"
+    // 2. Kiểm tra có kính (tật khúc xạ) - LUÔN kiểm tra, không phụ thuộc noPathologyFound
+    if (exam.hasGlasses) {
+      abnormalityCount++;
+    }
+
+    // 3. Kiểm tra khám tổng quát - nếu KHÔNG phải "chưa phát hiện bệnh lý"
     if (!exam.noPathologyFound) {
       // Có nội khoa với tình trạng tăng HA hoặc ghi chú
       if (exam.internalEnabled && (exam.bpCondition || exam.bpNote)) {
         abnormalityCount++;
       }
-      // Có bệnh lý mắt, có kính (tật khúc xạ), hoặc thị lực giảm (< 10/10) khi không đeo kính
+      // Có bệnh lý mắt, hoặc thị lực giảm (< 10/10) khi không đeo kính
       if (exam.eyeEnabled) {
         const hasEyeConditions = exam.eyeConditionsBoth.length > 0 || exam.eyeConditionsLeft.length > 0 || exam.eyeConditionsRight.length > 0 || exam.eyeNote;
-        // Có kính = có tật khúc xạ = bất thường (Loại II)
-        const hasRefractionError = exam.hasGlasses;
         // Thị lực giảm khi KHÔNG đeo kính (< 10/10)
         const hasReducedVision = !exam.hasGlasses && (exam.visionLeft !== '10/10' || exam.visionRight !== '10/10');
-        if (hasEyeConditions || hasRefractionError || hasReducedVision) {
+        if (hasEyeConditions || hasReducedVision) {
           abnormalityCount++;
         }
       }
