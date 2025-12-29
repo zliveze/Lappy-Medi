@@ -534,12 +534,14 @@ export function PatientEditor({
       if (exam.internalEnabled && (exam.bpCondition || exam.bpNote)) {
         abnormalityCount++;
       }
-      // Có bệnh lý mắt hoặc thị lực giảm (< 10/10) khi không đeo kính
+      // Có bệnh lý mắt, có kính (tật khúc xạ), hoặc thị lực giảm (< 10/10) khi không đeo kính
       if (exam.eyeEnabled) {
         const hasEyeConditions = exam.eyeConditionsBoth.length > 0 || exam.eyeConditionsLeft.length > 0 || exam.eyeConditionsRight.length > 0 || exam.eyeNote;
+        // Có kính = có tật khúc xạ = bất thường (Loại II)
+        const hasRefractionError = exam.hasGlasses;
         // Thị lực giảm khi KHÔNG đeo kính (< 10/10)
         const hasReducedVision = !exam.hasGlasses && (exam.visionLeft !== '10/10' || exam.visionRight !== '10/10');
-        if (hasEyeConditions || hasReducedVision) {
+        if (hasEyeConditions || hasRefractionError || hasReducedVision) {
           abnormalityCount++;
         }
       }
