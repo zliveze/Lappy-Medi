@@ -2,9 +2,18 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { PatientData, ColumnConfig, STANDARD_COLUMN_KEYS, STANDARD_COLUMNS, isMissingData } from '@/types/patient';
 
-const HEADER_KEYWORDS = ['CODE', 'HỌ VÀ TÊN'];
+const HEADER_KEYWORDS = ['CODE', 'HỌ VÀ TÊN', 'HỌ TÊN', 'HỌ & TÊN', 'HỌTÊN', 'TÊN'];
 const PREFERRED_SHEET_NAME = 'DS';
 const MAX_HEADER_SCAN_ROWS = 20;
+
+// Alias mapping cho các header tương đương (key: alias -> value: standard key)
+// Key phải là UPPERCASE vì sẽ so sánh sau khi normalize
+const HEADER_ALIASES: Record<string, string> = {
+  'HỌ TÊN': 'HỌ VÀ TÊN',
+  'HỌ & TÊN': 'HỌ VÀ TÊN',
+  'HỌTÊN': 'HỌ VÀ TÊN',
+  'TÊN': 'HỌ VÀ TÊN', // Một số file chỉ có cột "Tên"
+};
 
 // Thông tin về 1 bảng trong sheet
 export interface TableInfo {
@@ -385,8 +394,10 @@ export async function importExcel(file: File): Promise<ImportResult> {
             }
           }
 
-          // Normalize header để map đúng key chuẩn
-          const normalizedHeader = header.toUpperCase().trim().replace(/\s+/g, ' ');
+          // Normalize header để map đúng key chuẩn (có áp dụng alias)
+          let normalizedHeader = header.toUpperCase().trim().replace(/\s+/g, ' ');
+          // Áp dụng alias nếu có (ví dụ: "HỌ TÊN" -> "HỌ VÀ TÊN")
+          normalizedHeader = HEADER_ALIASES[normalizedHeader] || normalizedHeader;
           const standardCol = STANDARD_COLUMNS.find(sc =>
             sc.key.toUpperCase().trim().replace(/\s+/g, ' ') === normalizedHeader
           );
@@ -459,14 +470,18 @@ export async function importExcel(file: File): Promise<ImportResult> {
   }
 
   // Kiểm tra file đơn giản
-  const basicColumns = ['CODE', 'HỌ VÀ TÊN', 'NS', 'GT'];
+  const basicColumns = ['CODE', 'HỌ VÀ TÊN', 'HỌ TÊN', 'NS', 'GT'];
   const hasOnlyBasicColumns = headers.every(h =>
     basicColumns.some(bc => h.toUpperCase().includes(bc.toUpperCase()) || bc.toUpperCase().includes(h.toUpperCase()))
   ) || headers.length <= 6;
   const isSimpleFormat = hasOnlyBasicColumns && headers.length <= 6;
 
-  // Normalize header để so sánh (loại bỏ dấu cách thừa, chuyển uppercase)
-  const normalizeHeader = (h: string) => h.toUpperCase().trim().replace(/\s+/g, ' ');
+  // Normalize header để so sánh (loại bỏ dấu cách thừa, chuyển uppercase, áp dụng alias)
+  const normalizeHeader = (h: string) => {
+    const normalized = h.toUpperCase().trim().replace(/\s+/g, ' ');
+    // Áp dụng alias nếu có
+    return HEADER_ALIASES[normalized] || normalized;
+  };
 
   // Tạo cấu hình cột - sử dụng Set để tránh trùng lặp
   const columnSet = new Set(headers.map(h => normalizeHeader(h)));
