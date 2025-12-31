@@ -701,15 +701,19 @@ async function exportWithOriginalFormat(
               cell.value = '';
             }
 
-            // Giữ style (uu tiên style hiện có, nếu không thì dùng template)
-            if (existingStyle && Object.keys(existingStyle).length > 0) {
-              cell.style = existingStyle;
-            } else if (templateStyle) {
-              cell.style = templateStyle;
+            // Giữ style (ưu tiên style hiện có, nếu không thì dùng template)
+            // Nhưng KHÔNG giữ lại fill màu vàng từ style cũ - sẽ xử lý riêng
+            const styleToApply = existingStyle && Object.keys(existingStyle).length > 0
+              ? { ...existingStyle }
+              : (templateStyle ? { ...templateStyle } : undefined);
+
+            if (styleToApply) {
+              // Xóa fill cũ trước khi apply style
+              delete styleToApply.fill;
+              cell.style = styleToApply;
             }
 
-            // Highlight missing data với màu vàng - chỉ khi bệnh nhân đã phân loại VÀ ô thiếu dữ liệu
-            // KHÔNG override style nếu ô đã có dữ liệu
+            // Highlight missing data với màu vàng - CHỈ khi bệnh nhân đã phân loại VÀ ô thiếu dữ liệu
             const patientValue = patient[col.key];
             const isEmpty = patientValue === undefined || patientValue === null || String(patientValue).trim() === '';
             if (isMissingData(patient, col.key) && isEmpty) {
@@ -719,6 +723,7 @@ async function exportWithOriginalFormat(
                 fgColor: { argb: 'FFFFFF00' }, // Màu vàng
               };
             }
+            // Nếu có dữ liệu hoặc không cần highlight -> không tô màu (cell sẽ không có fill)
           } catch (cellError) {
             console.warn('Error setting cell value at row', dataRowNum, 'col', colIndex, cellError);
           }
