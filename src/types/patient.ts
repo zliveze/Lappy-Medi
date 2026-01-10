@@ -131,7 +131,7 @@ export const VISION_OPTIONS = [
 // Options ĐNT (Đếm Ngón Tay) cho thị lực kém
 export const DNT_OPTIONS = [
   'ĐNT 1m', 'ĐNT 2m', 'ĐNT 3m', 'ĐNT 4m', 'ĐNT 5m',
-  'ST(+)', 'ST(-)', 'BBL' // Sáng tối
+  'ST(+)', 'ST(-)', 'BBL', // Sáng tối
 ];
 
 // Options trục điện tim
