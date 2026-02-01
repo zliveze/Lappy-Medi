@@ -41,12 +41,22 @@ export const STANDARD_COLUMNS: ColumnConfig[] = [
 export const STANDARD_COLUMN_KEYS = STANDARD_COLUMNS.map(c => c.key);
 
 // Options cho các trường khám
-export const BLOOD_PRESSURE_OPTIONS = [
+// Options cũ - giữ lại để tương thích ngược khi parse
+export const BLOOD_PRESSURE_OPTIONS_LEGACY = [
   'Tăng HA đang điều trị',
   'Tăng HA không điều trị',
   'TD tăng HA',
   'tăng HA',
 ];
+
+// Options mới cho giao diện Nội khoa linh hoạt
+export const INTERNAL_PREFIX_OPTIONS = ['Theo dõi', 'Tăng', '']; // Rỗng = không có prefix
+export const INTERNAL_CONDITION_OPTIONS = ['THA', 'ĐTĐ', 'Rối loạn mỡ máu', 'Gout'];
+export const INTERNAL_TIME_UNIT_OPTIONS = ['ngày', 'tuần', 'tháng', 'năm'];
+export const INTERNAL_TREATMENT_OPTIONS = ['đang điều trị', 'không điều trị', ''];
+
+// Giữ lại export cũ để tương thích
+export const BLOOD_PRESSURE_OPTIONS = BLOOD_PRESSURE_OPTIONS_LEGACY;
 
 // Options bệnh lý mắt - dùng chung (2 mắt)
 export const EYE_OPTIONS_BOTH = [

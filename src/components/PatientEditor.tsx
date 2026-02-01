@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PatientData, BLOOD_PRESSURE_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS } from '@/types/patient';
+import { PatientData, BLOOD_PRESSURE_OPTIONS, INTERNAL_PREFIX_OPTIONS, INTERNAL_CONDITION_OPTIONS, INTERNAL_TIME_UNIT_OPTIONS, INTERNAL_TREATMENT_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS } from '@/types/patient';
 import { calculateBMI, getPhysiqueFromBMI } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -36,14 +36,24 @@ interface BPReading {
   diastolic: string;
 }
 
+// Entry cho mỗi bệnh lý nội khoa
+interface InternalConditionEntry {
+  prefix: string; // "Theo dõi", "Tăng", ""
+  condition: string; // "THA", "ĐTĐ", ...
+  timeValue: string; // số (ví dụ: "3")
+  timeUnit: string; // "ngày", "tuần", "tháng", "năm"
+  treatment: string; // "đang điều trị", "không điều trị", ""
+}
+
 interface ExamState {
   // Chưa phát hiện bệnh lý
   noPathologyFound: boolean;
   // Nội khoa
   internalEnabled: boolean;
   bpReadings: BPReading[]; // Hỗ trợ nhiều lần đo
-  bpCondition: string;
+  bpCondition: string; // Giữ lại để tương thích ngược
   bpNote: string;
+  internalConditions: InternalConditionEntry[]; // Danh sách bệnh lý nội khoa mới
   // Mắt
   eyeEnabled: boolean;
   visionLeft: string;
@@ -136,6 +146,7 @@ export function PatientEditor({
     bpReadings: [{ systolic: '', diastolic: '' }],
     bpCondition: '',
     bpNote: '',
+    internalConditions: [],
     eyeEnabled: false,
     visionLeft: '10/10',
     visionRight: '10/10',
@@ -364,6 +375,7 @@ export function PatientEditor({
       bpReadings: [{ systolic: '', diastolic: '' }],
       bpCondition: '',
       bpNote: '',
+      internalConditions: [],
       eyeEnabled: false,
       visionLeft: '10/10',
       visionRight: '10/10',
@@ -398,7 +410,8 @@ export function PatientEditor({
       const lowerLine = line.toLowerCase();
 
       // Parse Nội khoa
-      if (lowerLine.includes('nội khoa') || lowerLine.includes('ha ') || lowerLine.includes('huyết áp')) {
+      if (lowerLine.includes('nội khoa') || lowerLine.includes('ha ') || lowerLine.includes('huyết áp') ||
+        lowerLine.includes('tha') || lowerLine.includes('đtđ') || lowerLine.includes('theo dõi')) {
         newExam.internalEnabled = true;
         const readings: BPReading[] = [];
         const bpRegex = /L?(\d)?\s*HA\s*(\d+)\/(\d+)/gi;
@@ -414,19 +427,49 @@ export function PatientEditor({
             newExam.bpReadings = [{ systolic: bpMatch[1], diastolic: bpMatch[2] }];
           }
         }
-        // Check longer options first to avoid false matches (e.g., "tăng HA" matching "Tăng HA đang điều trị")
-        const sortedBpOptions = [...BLOOD_PRESSURE_OPTIONS].sort((a, b) => b.length - a.length);
-        for (const opt of sortedBpOptions) {
-          if (line.toLowerCase().includes(opt.toLowerCase())) {
-            newExam.bpCondition = opt;
-            break; // Take the first (longest) match
+
+        // Parse bệnh lý nội khoa mới với format: [prefix] [condition] khoảng [time] [unit] [treatment]
+        const internalConditions: InternalConditionEntry[] = [];
+        const conditionPatterns = [
+          // Pattern: theo dõi THA khoảng 3 tháng đang điều trị
+          /(?:(theo dõi|tăng)\s+)?(THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị))?/gi
+        ];
+
+        for (const pattern of conditionPatterns) {
+          let condMatch;
+          while ((condMatch = pattern.exec(line)) !== null) {
+            internalConditions.push({
+              prefix: condMatch[1] || '',
+              condition: condMatch[2] || '',
+              timeValue: condMatch[3] || '',
+              timeUnit: condMatch[4] || '',
+              treatment: condMatch[5] || ''
+            });
           }
         }
+
+        if (internalConditions.length > 0) {
+          newExam.internalConditions = internalConditions;
+        }
+
+        // Fallback: Check legacy options for backward compatibility
+        if (internalConditions.length === 0) {
+          const sortedBpOptions = [...BLOOD_PRESSURE_OPTIONS].sort((a, b) => b.length - a.length);
+          for (const opt of sortedBpOptions) {
+            if (line.toLowerCase().includes(opt.toLowerCase())) {
+              newExam.bpCondition = opt;
+              break;
+            }
+          }
+        }
+
         // Parse ghi chú nội khoa - phần text sau các thông tin đã parse
         let noteText = line.replace(/^.*?:/, '').trim();
         BLOOD_PRESSURE_OPTIONS.forEach(opt => {
           noteText = noteText.replace(new RegExp(opt, 'gi'), '');
         });
+        // Remove parsed conditions
+        noteText = noteText.replace(/(?:theo dõi|tăng)?\s*(?:THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị))?/gi, '');
         noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '').replace(/\([^)]*\)/g, '').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
         if (noteText && noteText !== 'Bình thường') newExam.bpNote = noteText;
       }
@@ -631,8 +674,11 @@ export function PatientEditor({
 
     const parts: string[] = [];
 
-    // Nội khoa - hỗ trợ nhiều lần đo
+    // Nội khoa - hỗ trợ nhiều lần đo và bệnh lý linh hoạt
     if (exam.internalEnabled) {
+      const internalParts: string[] = [];
+
+      // Build huyết áp
       let bp = '';
       const validReadings = exam.bpReadings.filter(r => r.systolic && r.diastolic);
       if (validReadings.length > 0) {
@@ -643,12 +689,36 @@ export function PatientEditor({
           const bpParts = validReadings.map((r, i) => `L${i + 1} HA ${r.systolic}/${r.diastolic} mmHg`);
           bp = bpParts.join(', ');
         }
-        if (exam.bpCondition) bp = `${exam.bpCondition} (${bp})`;
-      } else if (exam.bpCondition) {
-        bp = exam.bpCondition;
       }
-      if (exam.bpNote) bp += (bp ? ', ' : '') + exam.bpNote;
-      if (bp) parts.push(` - Nội khoa: ${bp}`);
+      if (bp) internalParts.push(bp);
+
+      // Build bệnh lý nội khoa mới
+      if (exam.internalConditions.length > 0) {
+        const conditionTexts = exam.internalConditions.map(entry => {
+          const parts: string[] = [];
+          if (entry.prefix) parts.push(entry.prefix.toLowerCase());
+          if (entry.condition) parts.push(entry.condition);
+          if (entry.timeValue && entry.timeUnit) {
+            parts.push(`khoảng ${entry.timeValue} ${entry.timeUnit}`);
+          }
+          if (entry.treatment) parts.push(entry.treatment);
+          return parts.join(' ');
+        }).filter(Boolean);
+        if (conditionTexts.length > 0) {
+          internalParts.push(...conditionTexts);
+        }
+      }
+
+      // Giữ lại bpCondition cũ cho tương thích ngược
+      if (exam.bpCondition && exam.internalConditions.length === 0) {
+        internalParts.push(exam.bpCondition);
+      }
+
+      if (exam.bpNote) internalParts.push(exam.bpNote);
+
+      if (internalParts.length > 0) {
+        parts.push(` - Nội khoa: ${internalParts.join(', ')}`);
+      }
     }
 
     // Mắt
@@ -1091,18 +1161,155 @@ export function PatientEditor({
                           + Thêm lần đo
                         </Button>
                       )}
-                      <div className="flex flex-wrap gap-2">
-                        {BLOOD_PRESSURE_OPTIONS.map((opt) => (
-                          <Button
-                            key={opt}
-                            size="sm"
-                            variant={exam.bpCondition === opt ? 'default' : 'outline'}
-                            onClick={() => setExam({ ...exam, bpCondition: exam.bpCondition === opt ? '' : opt })}
-                          >
-                            {opt}
-                          </Button>
+
+                      {/* Giao diện bệnh lý nội khoa mới - dạng cột linh hoạt */}
+                      <div className="border-t pt-3 mt-3">
+                        <Label className="text-sm font-medium mb-2 block">Bệnh lý nội khoa:</Label>
+                        {exam.internalConditions.map((entry, idx) => (
+                          <div key={idx} className="flex gap-2 items-center mb-2 flex-wrap">
+                            {/* Cột 1: Prefix */}
+                            <Select
+                              value={entry.prefix || 'none'}
+                              onValueChange={(v) => {
+                                const newConditions = [...exam.internalConditions];
+                                newConditions[idx] = { ...newConditions[idx], prefix: v === 'none' ? '' : v };
+                                setExam({ ...exam, internalConditions: newConditions });
+                              }}
+                            >
+                              <SelectTrigger className="w-28 h-8">
+                                <SelectValue placeholder="Prefix..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">(không)</SelectItem>
+                                {INTERNAL_PREFIX_OPTIONS.filter(o => o).map(opt => (
+                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* Cột 2: Bệnh lý */}
+                            <Select
+                              value={entry.condition}
+                              onValueChange={(v) => {
+                                const newConditions = [...exam.internalConditions];
+                                newConditions[idx] = { ...newConditions[idx], condition: v };
+                                setExam({ ...exam, internalConditions: newConditions });
+                              }}
+                            >
+                              <SelectTrigger className="w-36 h-8">
+                                <SelectValue placeholder="Bệnh lý..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {INTERNAL_CONDITION_OPTIONS.map(opt => (
+                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* Cột 3: Thời gian - số + đơn vị */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm text-gray-500">khoảng</span>
+                              <Input
+                                type="number"
+                                value={entry.timeValue}
+                                onChange={(e) => {
+                                  const newConditions = [...exam.internalConditions];
+                                  newConditions[idx] = { ...newConditions[idx], timeValue: e.target.value };
+                                  setExam({ ...exam, internalConditions: newConditions });
+                                }}
+                                placeholder="3"
+                                className="w-16 h-8"
+                              />
+                              <Select
+                                value={entry.timeUnit || 'none'}
+                                onValueChange={(v) => {
+                                  const newConditions = [...exam.internalConditions];
+                                  newConditions[idx] = { ...newConditions[idx], timeUnit: v === 'none' ? '' : v };
+                                  setExam({ ...exam, internalConditions: newConditions });
+                                }}
+                              >
+                                <SelectTrigger className="w-24 h-8">
+                                  <SelectValue placeholder="đơn vị..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">(không)</SelectItem>
+                                  {INTERNAL_TIME_UNIT_OPTIONS.map(opt => (
+                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Cột 4: Điều trị */}
+                            <Select
+                              value={entry.treatment || 'none'}
+                              onValueChange={(v) => {
+                                const newConditions = [...exam.internalConditions];
+                                newConditions[idx] = { ...newConditions[idx], treatment: v === 'none' ? '' : v };
+                                setExam({ ...exam, internalConditions: newConditions });
+                              }}
+                            >
+                              <SelectTrigger className="w-36 h-8">
+                                <SelectValue placeholder="Điều trị..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">(không)</SelectItem>
+                                {INTERNAL_TREATMENT_OPTIONS.filter(o => o).map(opt => (
+                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* Nút xóa */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 h-8 px-2"
+                              onClick={() => {
+                                const newConditions = exam.internalConditions.filter((_, i) => i !== idx);
+                                setExam({ ...exam, internalConditions: newConditions });
+                              }}
+                            >
+                              ✕
+                            </Button>
+                          </div>
                         ))}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setExam({
+                            ...exam,
+                            internalConditions: [...exam.internalConditions, {
+                              prefix: '',
+                              condition: 'THA',
+                              timeValue: '',
+                              timeUnit: '',
+                              treatment: ''
+                            }]
+                          })}
+                        >
+                          + Thêm bệnh lý
+                        </Button>
+
+                        {/* Preview kết quả */}
+                        {exam.internalConditions.length > 0 && (
+                          <div className="mt-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                            <strong>Kết quả:</strong>{' '}
+                            {exam.internalConditions.map((entry, idx) => {
+                              const parts: string[] = [];
+                              if (entry.prefix) parts.push(entry.prefix.toLowerCase());
+                              if (entry.condition) parts.push(entry.condition);
+                              if (entry.timeValue && entry.timeUnit) {
+                                parts.push(`khoảng ${entry.timeValue} ${entry.timeUnit}`);
+                              }
+                              if (entry.treatment) parts.push(entry.treatment);
+                              return parts.join(' ');
+                            }).filter(Boolean).join(', ')}
+                          </div>
+                        )}
                       </div>
+
                       <Input
                         placeholder="Ghi chú thêm..."
                         value={exam.bpNote}
