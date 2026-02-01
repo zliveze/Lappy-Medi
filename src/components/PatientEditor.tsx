@@ -39,10 +39,11 @@ interface BPReading {
 // Entry cho mỗi bệnh lý nội khoa
 interface InternalConditionEntry {
   prefix: string; // "Theo dõi", "Tăng", ""
-  condition: string; // "THA", "ĐTĐ", ...
-  timeValue: string; // số (ví dụ: "3")
+  condition: string; // "THA", "ĐTĐ", ..., "Mạch nhanh"
+  timeValue: string; // số (ví dụ: "3") - dùng cho các bệnh lý thông thường
   timeUnit: string; // "ngày", "tuần", "tháng", "năm"
   treatment: string; // "đang điều trị", "không điều trị", ""
+  heartRate?: string; // nhịp tim (ví dụ: "102") - chỉ dùng cho "Mạch nhanh"
 }
 
 interface ExamState {
@@ -429,6 +430,20 @@ export function PatientEditor({
           /(?:(theo dõi|tăng)\s+)?(THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị))?/gi
         ];
 
+        // Parse pattern riêng cho "mạch nhanh" với nhịp tim
+        const machNhanhPattern = /(?:(theo dõi)\s+)?mạch nhanh(?:\s*\((\d+)\))?/gi;
+        let machNhanhMatch;
+        while ((machNhanhMatch = machNhanhPattern.exec(line)) !== null) {
+          internalConditions.push({
+            prefix: machNhanhMatch[1] || '',
+            condition: 'Mạch nhanh',
+            timeValue: '',
+            timeUnit: '',
+            treatment: '',
+            heartRate: machNhanhMatch[2] || ''
+          });
+        }
+
         for (const pattern of conditionPatterns) {
           let condMatch;
           while ((condMatch = pattern.exec(line)) !== null) {
@@ -464,6 +479,8 @@ export function PatientEditor({
         });
         // Remove parsed conditions
         noteText = noteText.replace(/(?:theo dõi|tăng)?\s*(?:THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị))?/gi, '');
+        // Remove parsed "mạch nhanh" với nhịp tim
+        noteText = noteText.replace(/(?:theo dõi\s+)?mạch nhanh(?:\s*\(\d+\))?/gi, '');
         noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '').replace(/\([^)]*\)/g, '').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
         if (noteText && noteText !== 'Bình thường') newExam.bpNote = noteText;
       }
@@ -707,11 +724,20 @@ export function PatientEditor({
         const conditionTexts = exam.internalConditions.map(entry => {
           const parts: string[] = [];
           if (entry.prefix) parts.push(entry.prefix.toLowerCase());
-          if (entry.condition) parts.push(entry.condition);
-          if (entry.timeValue && entry.timeUnit) {
-            parts.push(`khoảng ${entry.timeValue} ${entry.timeUnit}`);
+
+          // Xử lý riêng cho "Mạch nhanh" - thêm nhịp tim trong ngoặc
+          if (entry.condition === 'Mạch nhanh') {
+            parts.push('mạch nhanh');
+            if (entry.heartRate) {
+              parts.push(`(${entry.heartRate})`);
+            }
+          } else {
+            if (entry.condition) parts.push(entry.condition);
+            if (entry.timeValue && entry.timeUnit) {
+              parts.push(`khoảng ${entry.timeValue} ${entry.timeUnit}`);
+            }
+            if (entry.treatment) parts.push(entry.treatment);
           }
-          if (entry.treatment) parts.push(entry.treatment);
 
           let conditionText = parts.join(' ');
 
@@ -898,6 +924,17 @@ export function PatientEditor({
     } else {
       setter([...arr, item]);
     }
+  };
+
+  // Helper function để kiểm tra exact match trong chuỗi (tránh "độ III" match với "độ I")
+  const isExactMatchInNote = (note: string, option: string): boolean => {
+    if (!note || !option) return false;
+    // Tạo regex pattern với word boundary hoặc dấu phẩy/đầu/cuối chuỗi
+    // Escape special regex characters trong option
+    const escapedOption = option.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Pattern: option phải ở đầu chuỗi, cuối chuỗi, hoặc được bao quanh bởi dấu phẩy/khoảng trắng
+    const pattern = new RegExp(`(^|,\\s*)${escapedOption}(\\s*,|\\s*$)`, 'i');
+    return pattern.test(note);
   };
 
   if (!patient) return null;
@@ -1206,59 +1243,79 @@ export function PatientEditor({
                               </SelectContent>
                             </Select>
 
-                            {/* Cột 3: Thời gian - số + đơn vị */}
-                            <div className="flex items-center gap-1">
-                              <span className="text-sm text-gray-500">khoảng</span>
-                              <Input
-                                type="number"
-                                value={entry.timeValue}
-                                onChange={(e) => {
-                                  const newConditions = [...exam.internalConditions];
-                                  newConditions[idx] = { ...newConditions[idx], timeValue: e.target.value };
-                                  setExam({ ...exam, internalConditions: newConditions });
-                                }}
-                                placeholder="3"
-                                className="w-16 h-8"
-                              />
+                            {/* Cột 3: Thời gian HOẶC Nhịp tim (tùy theo loại bệnh lý) */}
+                            {entry.condition === 'Mạch nhanh' ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm text-gray-500">nhịp tim:</span>
+                                <Input
+                                  type="number"
+                                  value={entry.heartRate || ''}
+                                  onChange={(e) => {
+                                    const newConditions = [...exam.internalConditions];
+                                    newConditions[idx] = { ...newConditions[idx], heartRate: e.target.value };
+                                    setExam({ ...exam, internalConditions: newConditions });
+                                  }}
+                                  placeholder="102"
+                                  className="w-20 h-8"
+                                />
+                                <span className="text-sm text-gray-500">lần/phút</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm text-gray-500">khoảng</span>
+                                <Input
+                                  type="number"
+                                  value={entry.timeValue}
+                                  onChange={(e) => {
+                                    const newConditions = [...exam.internalConditions];
+                                    newConditions[idx] = { ...newConditions[idx], timeValue: e.target.value };
+                                    setExam({ ...exam, internalConditions: newConditions });
+                                  }}
+                                  placeholder="3"
+                                  className="w-16 h-8"
+                                />
+                                <Select
+                                  value={entry.timeUnit || 'none'}
+                                  onValueChange={(v) => {
+                                    const newConditions = [...exam.internalConditions];
+                                    newConditions[idx] = { ...newConditions[idx], timeUnit: v === 'none' ? '' : v };
+                                    setExam({ ...exam, internalConditions: newConditions });
+                                  }}
+                                >
+                                  <SelectTrigger className="w-24 h-8">
+                                    <SelectValue placeholder="đơn vị..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">(không)</SelectItem>
+                                    {INTERNAL_TIME_UNIT_OPTIONS.map(opt => (
+                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+
+                            {/* Cột 4: Điều trị - ẩn nếu là "Mạch nhanh" */}
+                            {entry.condition !== 'Mạch nhanh' && (
                               <Select
-                                value={entry.timeUnit || 'none'}
+                                value={entry.treatment || 'none'}
                                 onValueChange={(v) => {
                                   const newConditions = [...exam.internalConditions];
-                                  newConditions[idx] = { ...newConditions[idx], timeUnit: v === 'none' ? '' : v };
+                                  newConditions[idx] = { ...newConditions[idx], treatment: v === 'none' ? '' : v };
                                   setExam({ ...exam, internalConditions: newConditions });
                                 }}
                               >
-                                <SelectTrigger className="w-24 h-8">
-                                  <SelectValue placeholder="đơn vị..." />
+                                <SelectTrigger className="w-36 h-8">
+                                  <SelectValue placeholder="Điều trị..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="none">(không)</SelectItem>
-                                  {INTERNAL_TIME_UNIT_OPTIONS.map(opt => (
+                                  {INTERNAL_TREATMENT_OPTIONS.filter(o => o).map(opt => (
                                     <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
-                            </div>
-
-                            {/* Cột 4: Điều trị */}
-                            <Select
-                              value={entry.treatment || 'none'}
-                              onValueChange={(v) => {
-                                const newConditions = [...exam.internalConditions];
-                                newConditions[idx] = { ...newConditions[idx], treatment: v === 'none' ? '' : v };
-                                setExam({ ...exam, internalConditions: newConditions });
-                              }}
-                            >
-                              <SelectTrigger className="w-36 h-8">
-                                <SelectValue placeholder="Điều trị..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">(không)</SelectItem>
-                                {INTERNAL_TREATMENT_OPTIONS.filter(o => o).map(opt => (
-                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            )}
 
                             {/* Nút xóa */}
                             <Button
@@ -1299,11 +1356,20 @@ export function PatientEditor({
                             {exam.internalConditions.map((entry, idx) => {
                               const parts: string[] = [];
                               if (entry.prefix) parts.push(entry.prefix.toLowerCase());
-                              if (entry.condition) parts.push(entry.condition);
-                              if (entry.timeValue && entry.timeUnit) {
-                                parts.push(`khoảng ${entry.timeValue} ${entry.timeUnit}`);
+
+                              // Xử lý riêng cho "Mạch nhanh"
+                              if (entry.condition === 'Mạch nhanh') {
+                                parts.push('mạch nhanh');
+                                if (entry.heartRate) {
+                                  parts.push(`(${entry.heartRate})`);
+                                }
+                              } else {
+                                if (entry.condition) parts.push(entry.condition);
+                                if (entry.timeValue && entry.timeUnit) {
+                                  parts.push(`khoảng ${entry.timeValue} ${entry.timeUnit}`);
+                                }
+                                if (entry.treatment) parts.push(entry.treatment);
                               }
-                              if (entry.treatment) parts.push(entry.treatment);
                               return parts.join(' ');
                             }).filter(Boolean).join(', ')}
                           </div>
@@ -1363,22 +1429,43 @@ export function PatientEditor({
                           <div className="flex flex-wrap gap-1">
                             {EYE_OPTIONS_SINGLE.map((opt) => {
                               const isMongThit = opt.includes('Mộng thịt');
+                              const optWithSide = `mắt (P): ${opt}`;
+                              // Kiểm tra trong cả eyeConditionsRight (cũ) và eyeNote (mới) - dùng exact match
+                              const isSelected = exam.eyeConditionsRight.includes(opt) || isExactMatchInNote(exam.eyeNote, optWithSide);
                               return (
                                 <Button
                                   key={opt}
                                   size="sm"
-                                  variant={exam.eyeConditionsRight.includes(opt) ? 'default' : 'outline'}
+                                  variant={isSelected ? 'default' : 'outline'}
                                   onClick={() => {
-                                    if (isMongThit) {
-                                      // Mộng thịt exclusive
-                                      if (exam.eyeConditionsRight.includes(opt)) {
-                                        setExam({ ...exam, eyeConditionsRight: exam.eyeConditionsRight.filter(o => !o.includes('Mộng thịt')) });
-                                      } else {
-                                        const filtered = exam.eyeConditionsRight.filter(o => !o.includes('Mộng thịt'));
-                                        setExam({ ...exam, eyeConditionsRight: [...filtered, opt] });
-                                      }
+                                    const currentNote = exam.eyeNote.trim();
+                                    if (isExactMatchInNote(currentNote, optWithSide)) {
+                                      // Nếu đã có thì xóa đi
+                                      const newNote = currentNote
+                                        .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                        .replace(/,\s*,/g, ',')
+                                        .trim();
+                                      setExam({ ...exam, eyeNote: newNote });
                                     } else {
-                                      toggleArrayItem(exam.eyeConditionsRight, opt, (items) => setExam({ ...exam, eyeConditionsRight: items }));
+                                      if (isMongThit) {
+                                        // Mộng thịt exclusive - xóa các độ mộng thịt mắt phải khác trước
+                                        let newNote = currentNote;
+                                        EYE_OPTIONS_SINGLE.filter(o => o.includes('Mộng thịt')).forEach(mongThitOpt => {
+                                          const mongThitWithSide = `mắt (P): ${mongThitOpt}`;
+                                          newNote = newNote
+                                            .replace(new RegExp(mongThitWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                            .replace(/^[\s,]+|[\s,]+$/g, '')
+                                            .replace(/,\s*,/g, ',')
+                                            .trim();
+                                        });
+                                        newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
+                                        setExam({ ...exam, eyeNote: newNote });
+                                      } else {
+                                        // Nếu chưa có thì cộng thêm
+                                        const newNote = currentNote ? `${currentNote}, ${optWithSide}` : optWithSide;
+                                        setExam({ ...exam, eyeNote: newNote });
+                                      }
                                     }
                                   }}
                                   className="text-xs px-2 py-1 h-7"
@@ -1421,22 +1508,43 @@ export function PatientEditor({
                           <div className="flex flex-wrap gap-1">
                             {EYE_OPTIONS_SINGLE.map((opt) => {
                               const isMongThit = opt.includes('Mộng thịt');
+                              const optWithSide = `mắt (T): ${opt}`;
+                              // Kiểm tra trong cả eyeConditionsLeft (cũ) và eyeNote (mới) - dùng exact match
+                              const isSelected = exam.eyeConditionsLeft.includes(opt) || isExactMatchInNote(exam.eyeNote, optWithSide);
                               return (
                                 <Button
                                   key={opt}
                                   size="sm"
-                                  variant={exam.eyeConditionsLeft.includes(opt) ? 'default' : 'outline'}
+                                  variant={isSelected ? 'default' : 'outline'}
                                   onClick={() => {
-                                    if (isMongThit) {
-                                      // Mộng thịt exclusive
-                                      if (exam.eyeConditionsLeft.includes(opt)) {
-                                        setExam({ ...exam, eyeConditionsLeft: exam.eyeConditionsLeft.filter(o => !o.includes('Mộng thịt')) });
-                                      } else {
-                                        const filtered = exam.eyeConditionsLeft.filter(o => !o.includes('Mộng thịt'));
-                                        setExam({ ...exam, eyeConditionsLeft: [...filtered, opt] });
-                                      }
+                                    const currentNote = exam.eyeNote.trim();
+                                    if (isExactMatchInNote(currentNote, optWithSide)) {
+                                      // Nếu đã có thì xóa đi
+                                      const newNote = currentNote
+                                        .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                        .replace(/,\s*,/g, ',')
+                                        .trim();
+                                      setExam({ ...exam, eyeNote: newNote });
                                     } else {
-                                      toggleArrayItem(exam.eyeConditionsLeft, opt, (items) => setExam({ ...exam, eyeConditionsLeft: items }));
+                                      if (isMongThit) {
+                                        // Mộng thịt exclusive - xóa các độ mộng thịt mắt trái khác trước
+                                        let newNote = currentNote;
+                                        EYE_OPTIONS_SINGLE.filter(o => o.includes('Mộng thịt')).forEach(mongThitOpt => {
+                                          const mongThitWithSide = `mắt (T): ${mongThitOpt}`;
+                                          newNote = newNote
+                                            .replace(new RegExp(mongThitWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                            .replace(/^[\s,]+|[\s,]+$/g, '')
+                                            .replace(/,\s*,/g, ',')
+                                            .trim();
+                                        });
+                                        newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
+                                        setExam({ ...exam, eyeNote: newNote });
+                                      } else {
+                                        // Nếu chưa có thì cộng thêm
+                                        const newNote = currentNote ? `${currentNote}, ${optWithSide}` : optWithSide;
+                                        setExam({ ...exam, eyeNote: newNote });
+                                      }
                                     }
                                   }}
                                   className="text-xs px-2 py-1 h-7"
@@ -1460,25 +1568,41 @@ export function PatientEditor({
                         </label>
                         {EYE_OPTIONS_BOTH.map((opt) => {
                           const isMongThit = opt.includes('mộng thịt');
+                          // Kiểm tra trong cả eyeConditionsBoth (cũ) và eyeNote (mới) - dùng exact match
+                          const isSelected = exam.eyeConditionsBoth.includes(opt) || isExactMatchInNote(exam.eyeNote, opt);
                           return (
                             <Button
                               key={opt}
                               size="sm"
-                              variant={exam.eyeConditionsBoth.includes(opt) ? 'default' : 'outline'}
+                              variant={isSelected ? 'default' : 'outline'}
                               onClick={() => {
-                                if (isMongThit) {
-                                  // Mộng thịt exclusive - chỉ cho phép chọn 1 độ
-                                  if (exam.eyeConditionsBoth.includes(opt)) {
-                                    // Bỏ chọn
-                                    setExam({ ...exam, eyeConditionsBoth: exam.eyeConditionsBoth.filter(o => !o.includes('mộng thịt')) });
-                                  } else {
-                                    // Chọn và bỏ các độ mộng thịt khác
-                                    const filtered = exam.eyeConditionsBoth.filter(o => !o.includes('mộng thịt'));
-                                    setExam({ ...exam, eyeConditionsBoth: [...filtered, opt] });
-                                  }
+                                const currentNote = exam.eyeNote.trim();
+                                if (isExactMatchInNote(currentNote, opt)) {
+                                  // Nếu đã có thì xóa đi
+                                  const newNote = currentNote
+                                    .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                    .replace(/^[\s,]+|[\s,]+$/g, '')
+                                    .replace(/,\s*,/g, ',')
+                                    .trim();
+                                  setExam({ ...exam, eyeNote: newNote });
                                 } else {
-                                  // Các bệnh khác - toggle bình thường
-                                  toggleArrayItem(exam.eyeConditionsBoth, opt, (items) => setExam({ ...exam, eyeConditionsBoth: items }));
+                                  if (isMongThit) {
+                                    // Mộng thịt exclusive - xóa các độ mộng thịt khác trước
+                                    let newNote = currentNote;
+                                    EYE_OPTIONS_BOTH.filter(o => o.includes('mộng thịt')).forEach(mongThitOpt => {
+                                      newNote = newNote
+                                        .replace(new RegExp(mongThitOpt + ',?\\s*', 'gi'), '')
+                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                        .replace(/,\s*,/g, ',')
+                                        .trim();
+                                    });
+                                    newNote = newNote ? `${newNote}, ${opt}` : opt;
+                                    setExam({ ...exam, eyeNote: newNote });
+                                  } else {
+                                    // Nếu chưa có thì cộng thêm
+                                    const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                    setExam({ ...exam, eyeNote: newNote });
+                                  }
                                 }
                               }}
                             >

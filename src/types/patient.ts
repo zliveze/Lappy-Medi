@@ -51,7 +51,7 @@ export const BLOOD_PRESSURE_OPTIONS_LEGACY = [
 
 // Options mới cho giao diện Nội khoa linh hoạt
 export const INTERNAL_PREFIX_OPTIONS = ['Theo dõi', 'Tăng', '']; // Rỗng = không có prefix
-export const INTERNAL_CONDITION_OPTIONS = ['THA', 'ĐTĐ', 'Rối loạn mỡ máu', 'Gout'];
+export const INTERNAL_CONDITION_OPTIONS = ['THA', 'Mạch nhanh'];
 export const INTERNAL_TIME_UNIT_OPTIONS = ['ngày', 'tuần', 'tháng', 'năm'];
 export const INTERNAL_TREATMENT_OPTIONS = ['đang điều trị', 'không điều trị', ''];
 
@@ -69,59 +69,61 @@ export const EYE_OPTIONS_BOTH = [
 
 // Options bệnh lý mắt - riêng từng mắt
 export const EYE_OPTIONS_SINGLE = [
-  'Đục thủy tinh thể',
-  'Lão thị',
-  'Cườm mắt',
-  'Mộng thịt độ I',
-  'Mộng thịt độ II',
-  'Mộng thịt độ III',
+  'đục thủy tinh thể',
+  'lão thị',
+  'nhược thị',
+  'cườm mắt',
+  'mộng thịt độ I',
+  'mộng thịt độ II',
+  'mộng thịt độ III',
 ];
 
 // Giữ lại EYE_OPTIONS để tương thích ngược
 export const EYE_OPTIONS = [
-  'Đục thủy tinh thể',
+  'đục thủy tinh thể',
   '2 mắt lão thị',
 ];
 
 export const ENT_OPTIONS = [
-  'Amidan quá phát',
-  'Viêm họng hạt',
-  'Viêm mũi dị ứng',
+  'amidan quá phát',
+  'viêm họng hạt',
+  'viêm mũi dị ứng',
 
 ];
 
 export const DENTAL_OPTIONS = [
-  'Sâu răng',
-  'Mất răng',
-  'Vôi răng',
-  'Hàm tháo lắp',
-  'Mòn cổ chân răng',
-  'Sâu răng đã điều trị',
-  'Sâu răng chưa điều trị',
-  'Mất răng đã điều trị',
-  'Mất răng chưa điều trị',
+  'sâu răng',
+  'mất răng',
+  'vôi răng',
+  'mất nhiều răng',
+  'hàm tháo lắp',
+  'mòn cổ chân răng',
+  'sâu răng đã điều trị',
+  'sâu răng chưa điều trị',
+  'mất răng đã điều trị',
+  'mất răng chưa điều trị',
 ];
 
 export const LIVER_OPTIONS = [
-  'Gan nhiễm mỡ độ I',
-  'Gan nhiễm mỡ độ II',
-  'Gan nhiễm mỡ độ III',
+  'gan nhiễm mỡ độ I',
+  'gan nhiễm mỡ độ II',
+  'gan nhiễm mỡ độ III',
 ];
 
 export const KIDNEY_OPTIONS = [
-  'Sỏi thận Trái',
-  'Sỏi thận Phải',
-  'Sỏi thận 2 bên',
+  'sỏi thận trái',
+  'sỏi thận phải',
+  'sỏi thận 2 bên',
 ];
 
 export const ULTRASOUND_ABDOMEN_NOTE_OPTIONS = [
-  'Polyp túi mật',
-  'Sỏi túi mật',
-  'Dày thành túi mật',
+  'polyp túi mật',
+  'sỏi túi mật',
+  'dày thành túi mật',
   'nang thận trái',
   'nang thận phải',
   'nang thận 2 bên',
-  'Phì đại tiền liệt tuyến',
+  'phì đại tiền liệt tuyến',
   'nốt vôi tiền liệt tuyến',
 ];
 
@@ -134,18 +136,18 @@ export const ULTRASOUND_BREAST_OPTIONS = [
 ];
 
 export const ULTRASOUND_THYROID_OPTIONS = [
-  'Bướu giáp nhân',
-  'Nang tuyến giáp',
-  'Viêm tuyến giáp',
+  'bướu giáp nhân',
+  'nang tuyến giáp',
+  'viêm tuyến giáp',
   'TIRADS II',
   'TIRADS III',
 ];
 
 export const ULTRASOUND_GYNECOLOGY_OPTIONS = [
-  'U xơ tử cung',
-  'Nang buồng trứng',
-  'Polyp buồng tử cung',
-  'Viêm phần phụ',
+  'u xơ tử cung',
+  'nang buồng trứng',
+  'polyp buồng tử cung',
+  'viêm phần phụ',
 ];
 
 export const VISION_OPTIONS = [
@@ -161,10 +163,10 @@ export const DNT_OPTIONS = [
 
 // Options trục điện tim
 export const ECG_AXIS_OPTIONS = [
-  'Trục điện tim trung gian',
-  'Trục điện tim lệch trái',
-  'Trục điện tim lệch phải',
-  'Trục vô định',
+  'trục điện tim trung gian',
+  'trục điện tim lệch trái',
+  'trục điện tim lệch phải',
+  'trục vô định',
 ];
 
 export const CLASSIFICATION_OPTIONS = [
