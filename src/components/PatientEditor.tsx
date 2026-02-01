@@ -491,8 +491,27 @@ export function PatientEditor({
           newExam.visionLeftMode = visionMatchL[1].includes('ĐNT') || visionMatchL[1].includes('ST') ? 'dnt' : 'normal';
         }
 
-        // Parse bệnh lý mắt
-        EYE_OPTIONS_BOTH.forEach(opt => {
+        // Parse bệnh lý mắt - sắp xếp từ độ cao đến thấp để tránh "độ I" match sai trong "độ III"
+        // Tách các options thành 2 nhóm: mộng thịt (exclusive) và các bệnh khác
+        const mongThitOptions = EYE_OPTIONS_BOTH.filter(opt => opt.includes('mộng thịt'));
+        const otherEyeOptions = EYE_OPTIONS_BOTH.filter(opt => !opt.includes('mộng thịt'));
+
+        // Sắp xếp mộng thịt từ độ cao đến thấp (III, II, I)
+        const sortedMongThit = [...mongThitOptions].sort((a, b) => {
+          const countI = (str: string) => (str.match(/I/g) || []).length;
+          return countI(b) - countI(a);
+        });
+
+        // Chỉ lấy MỘT mức độ mộng thịt (cao nhất)
+        for (const opt of sortedMongThit) {
+          if (line.toLowerCase().includes(opt.toLowerCase())) {
+            if (!newExam.eyeConditionsBoth.includes(opt)) newExam.eyeConditionsBoth.push(opt);
+            break; // Dừng lại sau khi tìm thấy
+          }
+        }
+
+        // Parse các bệnh lý mắt khác (không exclusive)
+        otherEyeOptions.forEach(opt => {
           if (line.toLowerCase().includes(opt.toLowerCase())) {
             if (!newExam.eyeConditionsBoth.includes(opt)) newExam.eyeConditionsBoth.push(opt);
           }
@@ -501,7 +520,9 @@ export function PatientEditor({
         // Parse ghi chú mắt - loại bỏ các thông tin đã parse
         let eyeNote = line.replace(/^.*?:/, '').trim();
         eyeNote = eyeNote.replace(/CK\s*/gi, '').replace(/mắt\s*\([PT]\)\s*\d+\/\d+/gi, '').replace(/mắt\s*\([PT]\)\s*ĐNT\s*\d+m/gi, '');
-        EYE_OPTIONS_BOTH.forEach(opt => { eyeNote = eyeNote.replace(new RegExp(opt, 'gi'), ''); });
+        // Sắp xếp theo độ dài giảm dần để tránh "độ III" bị replace sai thành "II"
+        const sortedEyeOptions = [...EYE_OPTIONS_BOTH].sort((a, b) => b.length - a.length);
+        sortedEyeOptions.forEach(opt => { eyeNote = eyeNote.replace(new RegExp(opt, 'gi'), ''); });
         eyeNote = eyeNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
         if (eyeNote) newExam.eyeNote = eyeNote;
       }
@@ -1361,17 +1382,32 @@ export function PatientEditor({
                           </Select>
                           {/* Bệnh lý mắt phải */}
                           <div className="flex flex-wrap gap-1">
-                            {EYE_OPTIONS_SINGLE.map((opt) => (
-                              <Button
-                                key={opt}
-                                size="sm"
-                                variant={exam.eyeConditionsRight.includes(opt) ? 'default' : 'outline'}
-                                onClick={() => toggleArrayItem(exam.eyeConditionsRight, opt, (items) => setExam({ ...exam, eyeConditionsRight: items }))}
-                                className="text-xs px-2 py-1 h-7"
-                              >
-                                {opt}
-                              </Button>
-                            ))}
+                            {EYE_OPTIONS_SINGLE.map((opt) => {
+                              const isMongThit = opt.includes('Mộng thịt');
+                              return (
+                                <Button
+                                  key={opt}
+                                  size="sm"
+                                  variant={exam.eyeConditionsRight.includes(opt) ? 'default' : 'outline'}
+                                  onClick={() => {
+                                    if (isMongThit) {
+                                      // Mộng thịt exclusive
+                                      if (exam.eyeConditionsRight.includes(opt)) {
+                                        setExam({ ...exam, eyeConditionsRight: exam.eyeConditionsRight.filter(o => !o.includes('Mộng thịt')) });
+                                      } else {
+                                        const filtered = exam.eyeConditionsRight.filter(o => !o.includes('Mộng thịt'));
+                                        setExam({ ...exam, eyeConditionsRight: [...filtered, opt] });
+                                      }
+                                    } else {
+                                      toggleArrayItem(exam.eyeConditionsRight, opt, (items) => setExam({ ...exam, eyeConditionsRight: items }));
+                                    }
+                                  }}
+                                  className="text-xs px-2 py-1 h-7"
+                                >
+                                  {opt}
+                                </Button>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -1404,17 +1440,32 @@ export function PatientEditor({
                           </Select>
                           {/* Bệnh lý mắt trái */}
                           <div className="flex flex-wrap gap-1">
-                            {EYE_OPTIONS_SINGLE.map((opt) => (
-                              <Button
-                                key={opt}
-                                size="sm"
-                                variant={exam.eyeConditionsLeft.includes(opt) ? 'default' : 'outline'}
-                                onClick={() => toggleArrayItem(exam.eyeConditionsLeft, opt, (items) => setExam({ ...exam, eyeConditionsLeft: items }))}
-                                className="text-xs px-2 py-1 h-7"
-                              >
-                                {opt}
-                              </Button>
-                            ))}
+                            {EYE_OPTIONS_SINGLE.map((opt) => {
+                              const isMongThit = opt.includes('Mộng thịt');
+                              return (
+                                <Button
+                                  key={opt}
+                                  size="sm"
+                                  variant={exam.eyeConditionsLeft.includes(opt) ? 'default' : 'outline'}
+                                  onClick={() => {
+                                    if (isMongThit) {
+                                      // Mộng thịt exclusive
+                                      if (exam.eyeConditionsLeft.includes(opt)) {
+                                        setExam({ ...exam, eyeConditionsLeft: exam.eyeConditionsLeft.filter(o => !o.includes('Mộng thịt')) });
+                                      } else {
+                                        const filtered = exam.eyeConditionsLeft.filter(o => !o.includes('Mộng thịt'));
+                                        setExam({ ...exam, eyeConditionsLeft: [...filtered, opt] });
+                                      }
+                                    } else {
+                                      toggleArrayItem(exam.eyeConditionsLeft, opt, (items) => setExam({ ...exam, eyeConditionsLeft: items }));
+                                    }
+                                  }}
+                                  className="text-xs px-2 py-1 h-7"
+                                >
+                                  {opt}
+                                </Button>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
@@ -1428,16 +1479,34 @@ export function PatientEditor({
                           />
                           <span>Có kính (CK)</span>
                         </label>
-                        {EYE_OPTIONS_BOTH.map((opt) => (
-                          <Button
-                            key={opt}
-                            size="sm"
-                            variant={exam.eyeConditionsBoth.includes(opt) ? 'default' : 'outline'}
-                            onClick={() => toggleArrayItem(exam.eyeConditionsBoth, opt, (items) => setExam({ ...exam, eyeConditionsBoth: items }))}
-                          >
-                            {opt}
-                          </Button>
-                        ))}
+                        {EYE_OPTIONS_BOTH.map((opt) => {
+                          const isMongThit = opt.includes('mộng thịt');
+                          return (
+                            <Button
+                              key={opt}
+                              size="sm"
+                              variant={exam.eyeConditionsBoth.includes(opt) ? 'default' : 'outline'}
+                              onClick={() => {
+                                if (isMongThit) {
+                                  // Mộng thịt exclusive - chỉ cho phép chọn 1 độ
+                                  if (exam.eyeConditionsBoth.includes(opt)) {
+                                    // Bỏ chọn
+                                    setExam({ ...exam, eyeConditionsBoth: exam.eyeConditionsBoth.filter(o => !o.includes('mộng thịt')) });
+                                  } else {
+                                    // Chọn và bỏ các độ mộng thịt khác
+                                    const filtered = exam.eyeConditionsBoth.filter(o => !o.includes('mộng thịt'));
+                                    setExam({ ...exam, eyeConditionsBoth: [...filtered, opt] });
+                                  }
+                                } else {
+                                  // Các bệnh khác - toggle bình thường
+                                  toggleArrayItem(exam.eyeConditionsBoth, opt, (items) => setExam({ ...exam, eyeConditionsBoth: items }));
+                                }
+                              }}
+                            >
+                              {opt}
+                            </Button>
+                          );
+                        })}
                       </div>
 
                       <Input
