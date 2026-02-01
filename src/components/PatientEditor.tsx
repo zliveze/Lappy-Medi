@@ -254,11 +254,21 @@ export function PatientEditor({
       const hasGynecology = ultrasoundText.toLowerCase().includes('phụ khoa');
 
       // Parse liver and kidney conditions from ultrasound text
+      // Sort LIVER_OPTIONS từ độ cao đến thấp (III, II, I) để tránh "độ I" match sai trong "độ II"
       const parsedLiverConditions: string[] = [];
       const parsedKidneyConditions: string[] = [];
-      LIVER_OPTIONS.forEach(opt => {
-        if (ultrasoundText.includes(opt)) parsedLiverConditions.push(opt);
+      const sortedLiverOptions = [...LIVER_OPTIONS].sort((a, b) => {
+        // Đếm số chữ I để sắp xếp giảm dần: III=3, II=2, I=1
+        const countI = (str: string) => (str.match(/I/g) || []).length;
+        return countI(b) - countI(a);
       });
+      // Chỉ lấy MỘT độ gan (cao nhất) để tránh conflict
+      for (const opt of sortedLiverOptions) {
+        if (ultrasoundText.includes(opt)) {
+          parsedLiverConditions.push(opt);
+          break; // Dừng lại sau khi tìm thấy
+        }
+      }
       KIDNEY_OPTIONS.forEach(opt => {
         if (ultrasoundText.includes(opt)) parsedKidneyConditions.push(opt);
       });
@@ -282,7 +292,10 @@ export function PatientEditor({
 
       // Parse abdomen note (loại bỏ các bệnh lý gan/thận đã parse)
       let parsedAbdomenNote = parseUltrasoundSection(ultrasoundText, 'Bụng');
-      [...parsedLiverConditions, ...parsedKidneyConditions].forEach(cond => {
+      // Sắp xếp các condition theo độ dài giảm dần để tránh xóa sai
+      const conditionsToRemove = [...parsedLiverConditions, ...parsedKidneyConditions]
+        .sort((a, b) => b.length - a.length);
+      conditionsToRemove.forEach(cond => {
         parsedAbdomenNote = parsedAbdomenNote.replace(cond, '').replace(/,\s*,/g, ',').replace(/^,\s*|,\s*$/g, '').trim();
       });
 
@@ -1551,7 +1564,16 @@ export function PatientEditor({
                                   key={opt}
                                   size="sm"
                                   variant={imaging.liverConditions.includes(opt) ? 'default' : 'outline'}
-                                  onClick={() => toggleArrayItem(imaging.liverConditions, opt, (items) => setImaging({ ...imaging, liverConditions: items }))}
+                                  onClick={() => {
+                                    // Exclusive selection - chỉ cho phép chọn một độ gan nhiễm mỡ
+                                    if (imaging.liverConditions.includes(opt)) {
+                                      // Nếu đã chọn thì bỏ chọn
+                                      setImaging({ ...imaging, liverConditions: [] });
+                                    } else {
+                                      // Nếu chưa chọn thì chọn và bỏ các độ khác
+                                      setImaging({ ...imaging, liverConditions: [opt] });
+                                    }
+                                  }}
                                   className="text-xs h-7"
                                 >
                                   {opt}
@@ -1586,8 +1608,23 @@ export function PatientEditor({
                                 <Button
                                   key={opt}
                                   size="sm"
-                                  variant={imaging.abdomenNote === opt ? 'default' : 'outline'}
-                                  onClick={() => setImaging({ ...imaging, abdomenNote: opt })}
+                                  variant={imaging.abdomenNote.includes(opt) ? 'default' : 'outline'}
+                                  onClick={() => {
+                                    // Cộng thêm vào ghi chú thay vì thay thế
+                                    const currentNote = imaging.abdomenNote.trim();
+                                    if (currentNote.includes(opt)) {
+                                      // Nếu đã có thì xóa đi
+                                      const newNote = currentNote
+                                        .split(', ')
+                                        .filter(item => item !== opt)
+                                        .join(', ');
+                                      setImaging({ ...imaging, abdomenNote: newNote });
+                                    } else {
+                                      // Nếu chưa có thì cộng thêm
+                                      const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                      setImaging({ ...imaging, abdomenNote: newNote });
+                                    }
+                                  }}
                                   className="text-xs h-7"
                                 >
                                   {opt}
