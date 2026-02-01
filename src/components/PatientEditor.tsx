@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PatientData, BLOOD_PRESSURE_OPTIONS, INTERNAL_PREFIX_OPTIONS, INTERNAL_CONDITION_OPTIONS, INTERNAL_TIME_UNIT_OPTIONS, INTERNAL_TREATMENT_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS } from '@/types/patient';
+import { PatientData, BLOOD_PRESSURE_OPTIONS, INTERNAL_PREFIX_OPTIONS, INTERNAL_CONDITION_OPTIONS, INTERNAL_TIME_UNIT_OPTIONS, INTERNAL_TREATMENT_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS, ULTRASOUND_THYROID_OPTIONS, ULTRASOUND_GYNECOLOGY_OPTIONS } from '@/types/patient';
 import { calculateBMI, getPhysiqueFromBMI } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -165,9 +165,9 @@ export function PatientEditor({
     dentalConditions: [],
     dentalNote: '',
     surgeryEnabled: false,
-    surgery: 'Bình thường',
+    surgery: '',
     dermaEnabled: false,
-    dermatology: 'Bình thường',
+    dermatology: '',
   });
 
   // Imaging state - mặc định để trống, chỉ hiển thị text mặc định khi build
@@ -301,14 +301,8 @@ export function PatientEditor({
         return '';
       };
 
-      // Parse abdomen note (loại bỏ các bệnh lý gan/thận đã parse)
-      let parsedAbdomenNote = parseUltrasoundSection(ultrasoundText, 'Bụng');
-      // Sắp xếp các condition theo độ dài giảm dần để tránh xóa sai
-      const conditionsToRemove = [...parsedLiverConditions, ...parsedKidneyConditions]
-        .sort((a, b) => b.length - a.length);
-      conditionsToRemove.forEach(cond => {
-        parsedAbdomenNote = parsedAbdomenNote.replace(cond, '').replace(/,\s*,/g, ',').replace(/^,\s*|,\s*$/g, '').trim();
-      });
+      // Parse abdomen note - giữ nguyên toàn bộ text (không loại bỏ gan/thận vì đã hợp nhất vào abdomenNote)
+      const parsedAbdomenNote = parseUltrasoundSection(ultrasoundText, 'Bụng');
 
       const parsedThyroid = parseUltrasoundSection(ultrasoundText, 'Tuyến giáp');
       const parsedBreast = parseUltrasoundSection(ultrasoundText, 'Tuyến vú');
@@ -394,9 +388,9 @@ export function PatientEditor({
       dentalConditions: [],
       dentalNote: '',
       surgeryEnabled: false,
-      surgery: 'Bình thường',
+      surgery: '',
       dermaEnabled: false,
-      dermatology: 'Bình thường',
+      dermatology: '',
     };
 
     // Kiểm tra nếu là "Hiện chưa phát hiện bệnh lý"
@@ -527,35 +521,23 @@ export function PatientEditor({
         if (eyeNote) newExam.eyeNote = eyeNote;
       }
 
-      // Parse TMH
+      // Parse TMH - điền toàn bộ vào entNote
       if (lowerLine.includes('tmh') || lowerLine.includes('amidan') || lowerLine.includes('viêm họng') || lowerLine.includes('viêm mũi')) {
         newExam.entEnabled = true;
-        ENT_OPTIONS.forEach(opt => {
-          if (line.toLowerCase().includes(opt.toLowerCase())) {
-            if (!newExam.entConditions.includes(opt)) newExam.entConditions.push(opt);
-          }
-        });
-        // Parse ghi chú TMH
+        // Lấy toàn bộ text sau dấu :
         let entNote = line.replace(/^.*?:/, '').trim();
-        ENT_OPTIONS.forEach(opt => { entNote = entNote.replace(new RegExp(opt, 'gi'), ''); });
         entNote = entNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
         if (entNote && entNote !== 'Bình thường') newExam.entNote = entNote;
       }
 
-      // Parse RHM
+      // Parse RHM - điền toàn bộ vào dentalNote
       if (lowerLine.includes('rhm') || lowerLine.includes('sức nhai') || lowerLine.includes('răng')) {
         newExam.dentalEnabled = true;
         const chewMatch = line.match(/sức nhai\s*(\d+)%/i);
         if (chewMatch) newExam.chewingPower = parseInt(chewMatch[1]);
-        DENTAL_OPTIONS.forEach(opt => {
-          if (line.toLowerCase().includes(opt.toLowerCase())) {
-            if (!newExam.dentalConditions.includes(opt)) newExam.dentalConditions.push(opt);
-          }
-        });
-        // Parse ghi chú RHM
+        // Lấy text sau dấu :, loại bỏ phần sức nhai
         let dentalNote = line.replace(/^.*?:/, '').trim();
-        dentalNote = dentalNote.replace(/sức nhai\s*\d+%/gi, '');
-        DENTAL_OPTIONS.forEach(opt => { dentalNote = dentalNote.replace(new RegExp(opt, 'gi'), ''); });
+        dentalNote = dentalNote.replace(/sức nhai\s*\d+%,?\s*/gi, '');
         dentalNote = dentalNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
         if (dentalNote && dentalNote !== 'Bình thường') newExam.dentalNote = dentalNote;
       }
@@ -700,18 +682,25 @@ export function PatientEditor({
       const internalParts: string[] = [];
 
       // Build huyết áp
-      let bp = '';
+      let bpText = '';
       const validReadings = exam.bpReadings.filter(r => r.systolic && r.diastolic);
       if (validReadings.length > 0) {
         if (validReadings.length === 1) {
-          bp = `HA ${validReadings[0].systolic}/${validReadings[0].diastolic} mmHg`;
+          bpText = `HA ${validReadings[0].systolic}/${validReadings[0].diastolic} mmHg`;
         } else {
           // Format: L1 HA 140/90 mmHg, L2 HA 150/90 mmHg
           const bpParts = validReadings.map((r, i) => `L${i + 1} HA ${r.systolic}/${r.diastolic} mmHg`);
-          bp = bpParts.join(', ');
+          bpText = bpParts.join(', ');
         }
       }
-      if (bp) internalParts.push(bp);
+
+      // Kiểm tra có bệnh lý THA không
+      const hasTHA = exam.internalConditions.some(entry => entry.condition === 'THA');
+
+      // Nếu không có THA, thêm huyết áp ở đầu như cũ
+      if (!hasTHA && bpText) {
+        internalParts.push(bpText);
+      }
 
       // Build bệnh lý nội khoa mới
       if (exam.internalConditions.length > 0) {
@@ -723,7 +712,15 @@ export function PatientEditor({
             parts.push(`khoảng ${entry.timeValue} ${entry.timeUnit}`);
           }
           if (entry.treatment) parts.push(entry.treatment);
-          return parts.join(' ');
+
+          let conditionText = parts.join(' ');
+
+          // Nếu là THA và có huyết áp, thêm vào trong ngoặc
+          if (entry.condition === 'THA' && bpText) {
+            conditionText += ` (${bpText})`;
+          }
+
+          return conditionText;
         }).filter(Boolean);
         if (conditionTexts.length > 0) {
           internalParts.push(...conditionTexts);
@@ -763,30 +760,25 @@ export function PatientEditor({
       parts.push(` - Mắt: ${eyeText}`);
     }
 
-    // TMH
-    if (exam.entEnabled) {
-      let tmh = exam.entConditions.length > 0 ? exam.entConditions.join(', ') : '';
-      if (exam.entNote) tmh += (tmh ? ', ' : '') + exam.entNote;
-      if (tmh) parts.push(` - TMH: ${tmh}`);
+    // TMH - chỉ dùng entNote (tất cả options đã được điền vào đây)
+    if (exam.entEnabled && exam.entNote) {
+      parts.push(` - TMH: ${exam.entNote}`);
     }
 
-    // RHM
+    // RHM - chỉ dùng dentalNote (tất cả options đã được điền vào đây)
     if (exam.dentalEnabled) {
       let rhm = `sức nhai ${exam.chewingPower}%`;
-      if (exam.dentalConditions.length > 0) {
-        rhm += `, ${exam.dentalConditions.join(', ')}`;
-      }
       if (exam.dentalNote) rhm += `, ${exam.dentalNote}`;
       parts.push(` - RHM: ${rhm}`);
     }
 
-    // Ngoại khoa
-    if (exam.surgeryEnabled && exam.surgery && exam.surgery !== 'Bình thường') {
+    // Ngoại khoa - chỉ thêm khi enabled VÀ có nội dung
+    if (exam.surgeryEnabled && exam.surgery) {
       parts.push(` - Ngoại khoa: ${exam.surgery}`);
     }
 
-    // Da liễu
-    if (exam.dermaEnabled && exam.dermatology && exam.dermatology !== 'Bình thường') {
+    // Da liễu - chỉ thêm khi enabled VÀ có nội dung
+    if (exam.dermaEnabled && exam.dermatology) {
       parts.push(` - Da liễu: ${exam.dermatology}`);
     }
 
@@ -808,22 +800,9 @@ export function PatientEditor({
       parts.push(` - Siêu âm Tuyến vú: ${imaging.breast || defaultBreast}`);
     }
 
-    // Bụng - logic mới: ghép các bệnh lý
+    // Bụng - chỉ dùng abdomenNote (tất cả options đã được điền vào đây)
     if (imaging.abdomenEnabled) {
-      const conditions: string[] = [];
-      if (imaging.liverConditions.length > 0) {
-        conditions.push(...imaging.liverConditions);
-      }
-      if (imaging.kidneyConditions.length > 0) {
-        conditions.push(...imaging.kidneyConditions);
-      }
-      if (imaging.abdomenNote) {
-        conditions.push(imaging.abdomenNote);
-      }
-
-      const abdomenText = conditions.length > 0
-        ? conditions.join(', ')
-        : 'chưa phát hiện bất thường';
+      const abdomenText = imaging.abdomenNote.trim() || 'chưa phát hiện bất thường';
       parts.push(` - Siêu âm Bụng: ${abdomenText}`);
     }
 
@@ -1514,6 +1493,26 @@ export function PatientEditor({
                         value={exam.eyeNote}
                         onChange={(e) => setExam({ ...exam, eyeNote: e.target.value })}
                       />
+
+                      {/* Preview kết quả Mắt */}
+                      <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                        <strong>Kết quả:</strong>{' '}
+                        {(() => {
+                          const prefix = exam.hasGlasses ? 'CK ' : '';
+                          let eyeText = `${prefix}mắt (P) ${exam.visionRight}, mắt (T) ${exam.visionLeft}`;
+                          if (exam.eyeConditionsBoth.length > 0) {
+                            eyeText += `, ${exam.eyeConditionsBoth.join(', ')}`;
+                          }
+                          if (exam.eyeConditionsRight.length > 0) {
+                            eyeText += `, mắt (P): ${exam.eyeConditionsRight.join(', ')}`;
+                          }
+                          if (exam.eyeConditionsLeft.length > 0) {
+                            eyeText += `, mắt (T): ${exam.eyeConditionsLeft.join(', ')}`;
+                          }
+                          if (exam.eyeNote) eyeText += `, ${exam.eyeNote}`;
+                          return eyeText;
+                        })()}
+                      </div>
                     </>
                   )}
                 </div>
@@ -1534,18 +1533,38 @@ export function PatientEditor({
                           <Button
                             key={opt}
                             size="sm"
-                            variant={exam.entConditions.includes(opt) ? 'default' : 'outline'}
-                            onClick={() => toggleArrayItem(exam.entConditions, opt, (items) => setExam({ ...exam, entConditions: items }))}
+                            variant={exam.entNote.includes(opt) ? 'default' : 'outline'}
+                            onClick={() => {
+                              const currentNote = exam.entNote.trim();
+                              if (currentNote.includes(opt)) {
+                                // Nếu đã có thì xóa đi
+                                const newNote = currentNote
+                                  .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                  .replace(/^[\s,]+|[\s,]+$/g, '')
+                                  .replace(/,\s*,/g, ',')
+                                  .trim();
+                                setExam({ ...exam, entNote: newNote });
+                              } else {
+                                // Nếu chưa có thì cộng thêm
+                                const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                setExam({ ...exam, entNote: newNote });
+                              }
+                            }}
                           >
                             {opt}
                           </Button>
                         ))}
                       </div>
                       <Input
-                        placeholder="Ghi chú thêm..."
+                        placeholder="Ghi chú (VD: Viêm họng cấp, Viêm mũi dị ứng...)"
                         value={exam.entNote}
                         onChange={(e) => setExam({ ...exam, entNote: e.target.value })}
                       />
+                      {/* Preview kết quả TMH */}
+                      <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                        <strong>Kết quả:</strong>{' '}
+                        {exam.entNote || 'Bình thường'}
+                      </div>
                     </>
                   )}
                 </div>
@@ -1574,6 +1593,7 @@ export function PatientEditor({
                               const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
                               setExam({ ...exam, chewingPower: val });
                             }}
+                            onFocus={(e) => e.target.select()}
                             className="w-20"
                           />
                           <span>%</span>
@@ -1598,18 +1618,42 @@ export function PatientEditor({
                           <Button
                             key={opt}
                             size="sm"
-                            variant={exam.dentalConditions.includes(opt) ? 'default' : 'outline'}
-                            onClick={() => toggleArrayItem(exam.dentalConditions, opt, (items) => setExam({ ...exam, dentalConditions: items }))}
+                            variant={exam.dentalNote.includes(opt) ? 'default' : 'outline'}
+                            onClick={() => {
+                              const currentNote = exam.dentalNote.trim();
+                              if (currentNote.includes(opt)) {
+                                // Nếu đã có thì xóa đi
+                                const newNote = currentNote
+                                  .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                  .replace(/^[\s,]+|[\s,]+$/g, '')
+                                  .replace(/,\s*,/g, ',')
+                                  .trim();
+                                setExam({ ...exam, dentalNote: newNote });
+                              } else {
+                                // Nếu chưa có thì cộng thêm
+                                const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                setExam({ ...exam, dentalNote: newNote });
+                              }
+                            }}
                           >
                             {opt}
                           </Button>
                         ))}
                       </div>
                       <Input
-                        placeholder="Ghi chú thêm..."
+                        placeholder="Ghi chú bệnh lý răng miệng..."
                         value={exam.dentalNote}
                         onChange={(e) => setExam({ ...exam, dentalNote: e.target.value })}
                       />
+                      {/* Preview kết quả RHM */}
+                      <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                        <strong>Kết quả:</strong>{' '}
+                        {(() => {
+                          let rhm = `sức nhai ${exam.chewingPower}%`;
+                          if (exam.dentalNote) rhm += `, ${exam.dentalNote}`;
+                          return rhm;
+                        })()}
+                      </div>
                     </>
                   )}
                 </div>
@@ -1624,12 +1668,19 @@ export function PatientEditor({
                     <h3 className="font-semibold">Ngoại khoa</h3>
                   </label>
                   {exam.surgeryEnabled && (
-                    <Textarea
-                      value={exam.surgery}
-                      onChange={(e) => setExam({ ...exam, surgery: e.target.value })}
-                      placeholder="Nhập kết quả khám ngoại khoa..."
-                      rows={3}
-                    />
+                    <>
+                      <Textarea
+                        value={exam.surgery}
+                        onChange={(e) => setExam({ ...exam, surgery: e.target.value })}
+                        placeholder="Nhập kết quả khám ngoại khoa..."
+                        rows={3}
+                      />
+                      {/* Preview kết quả Ngoại khoa */}
+                      <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                        <strong>Kết quả:</strong>{' '}
+                        {exam.surgery || 'Bình thường'}
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -1643,12 +1694,19 @@ export function PatientEditor({
                     <h3 className="font-semibold">Da liễu</h3>
                   </label>
                   {exam.dermaEnabled && (
-                    <Textarea
-                      value={exam.dermatology}
-                      onChange={(e) => setExam({ ...exam, dermatology: e.target.value })}
-                      placeholder="Nhập kết quả khám da liễu..."
-                      rows={3}
-                    />
+                    <>
+                      <Textarea
+                        value={exam.dermatology}
+                        onChange={(e) => setExam({ ...exam, dermatology: e.target.value })}
+                        placeholder="Nhập kết quả khám da liễu..."
+                        rows={3}
+                      />
+                      {/* Preview kết quả Da liễu */}
+                      <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                        <strong>Kết quả:</strong>{' '}
+                        {exam.dermatology || 'Bình thường'}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -1839,15 +1897,23 @@ export function PatientEditor({
                                 <Button
                                   key={opt}
                                   size="sm"
-                                  variant={imaging.liverConditions.includes(opt) ? 'default' : 'outline'}
+                                  variant={imaging.abdomenNote.includes(opt) ? 'default' : 'outline'}
                                   onClick={() => {
-                                    // Exclusive selection - chỉ cho phép chọn một độ gan nhiễm mỡ
-                                    if (imaging.liverConditions.includes(opt)) {
+                                    const currentNote = imaging.abdomenNote.trim();
+                                    // Loại bỏ tất cả các option gan khác trước (exclusive selection)
+                                    let cleanedNote = currentNote;
+                                    LIVER_OPTIONS.forEach(liverOpt => {
+                                      cleanedNote = cleanedNote.replace(new RegExp(liverOpt + ',?\\s*', 'gi'), '');
+                                    });
+                                    cleanedNote = cleanedNote.replace(/^[\s,]+|[\s,]+$/g, '').replace(/,\s*,/g, ',').trim();
+
+                                    if (currentNote.includes(opt)) {
                                       // Nếu đã chọn thì bỏ chọn
-                                      setImaging({ ...imaging, liverConditions: [] });
+                                      setImaging({ ...imaging, abdomenNote: cleanedNote });
                                     } else {
-                                      // Nếu chưa chọn thì chọn và bỏ các độ khác
-                                      setImaging({ ...imaging, liverConditions: [opt] });
+                                      // Nếu chưa chọn thì chọn
+                                      const newNote = cleanedNote ? `${opt}, ${cleanedNote}` : opt;
+                                      setImaging({ ...imaging, abdomenNote: newNote });
                                     }
                                   }}
                                   className="text-xs h-7"
@@ -1866,8 +1932,23 @@ export function PatientEditor({
                                 <Button
                                   key={opt}
                                   size="sm"
-                                  variant={imaging.kidneyConditions.includes(opt) ? 'default' : 'outline'}
-                                  onClick={() => toggleArrayItem(imaging.kidneyConditions, opt, (items) => setImaging({ ...imaging, kidneyConditions: items }))}
+                                  variant={imaging.abdomenNote.includes(opt) ? 'default' : 'outline'}
+                                  onClick={() => {
+                                    const currentNote = imaging.abdomenNote.trim();
+                                    if (currentNote.includes(opt)) {
+                                      // Nếu đã có thì xóa đi
+                                      const newNote = currentNote
+                                        .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                        .replace(/,\s*,/g, ',')
+                                        .trim();
+                                      setImaging({ ...imaging, abdomenNote: newNote });
+                                    } else {
+                                      // Nếu chưa có thì cộng thêm
+                                      const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                      setImaging({ ...imaging, abdomenNote: newNote });
+                                    }
+                                  }}
                                   className="text-xs h-7"
                                 >
                                   {opt}
@@ -1918,10 +1999,7 @@ export function PatientEditor({
                           {/* Hiển thị kết quả */}
                           <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
                             <strong>Kết quả:</strong>{' '}
-                            {imaging.liverConditions.length === 0 && imaging.kidneyConditions.length === 0 && !imaging.abdomenNote
-                              ? 'chưa ghi nhận bất thường'
-                              : [...imaging.liverConditions, ...imaging.kidneyConditions, imaging.abdomenNote].filter(Boolean).join(', ')
-                            }
+                            {imaging.abdomenNote || 'chưa phát hiện bất thường'}
                           </div>
                         </>
                       )}
@@ -1937,11 +2015,67 @@ export function PatientEditor({
                         <span className="font-medium">Siêu âm Tuyến giáp</span>
                       </label>
                       {imaging.thyroidEnabled && (
-                        <Input
-                          value={imaging.thyroid}
-                          onChange={(e) => setImaging({ ...imaging, thyroid: e.target.value })}
-                          placeholder="chưa ghi nhận bất thường"
-                        />
+                        <>
+                          <div className="flex flex-wrap gap-1">
+                            {ULTRASOUND_THYROID_OPTIONS.map((opt) => {
+                              const isTirads = opt.includes('TIRADS');
+                              // Kiểm tra chính xác bằng regex word boundary
+                              const isSelected = new RegExp(`(^|,\\s*)${opt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s*,|$)`, 'i').test(imaging.thyroid) || imaging.thyroid === opt;
+                              return (
+                                <Button
+                                  key={opt}
+                                  size="sm"
+                                  variant={isSelected ? 'default' : 'outline'}
+                                  onClick={() => {
+                                    let currentNote = imaging.thyroid.trim();
+
+                                    if (isTirads) {
+                                      // TIRADS exclusive - xóa tất cả TIRADS khác trước
+                                      ULTRASOUND_THYROID_OPTIONS.filter(o => o.includes('TIRADS')).forEach(tiradsOpt => {
+                                        currentNote = currentNote.replace(new RegExp(tiradsOpt + ',?\\s*', 'gi'), '');
+                                      });
+                                      currentNote = currentNote.replace(/^[\s,]+|[\s,]+$/g, '').replace(/,\s*,/g, ',').trim();
+
+                                      if (isSelected) {
+                                        // Đã chọn thì bỏ chọn
+                                        setImaging({ ...imaging, thyroid: currentNote });
+                                      } else {
+                                        // Chưa chọn thì chọn
+                                        const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                        setImaging({ ...imaging, thyroid: newNote });
+                                      }
+                                    } else {
+                                      // Các option khác - toggle bình thường
+                                      if (isSelected) {
+                                        const newNote = currentNote
+                                          .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                          .replace(/^[\s,]+|[\s,]+$/g, '')
+                                          .replace(/,\s*,/g, ',')
+                                          .trim();
+                                        setImaging({ ...imaging, thyroid: newNote });
+                                      } else {
+                                        const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                        setImaging({ ...imaging, thyroid: newNote });
+                                      }
+                                    }
+                                  }}
+                                  className="text-xs h-7"
+                                >
+                                  {opt}
+                                </Button>
+                              );
+                            })}
+                          </div>
+                          <Input
+                            value={imaging.thyroid}
+                            onChange={(e) => setImaging({ ...imaging, thyroid: e.target.value })}
+                            placeholder="chưa phát hiện bất thường"
+                          />
+                          <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                            <strong>Kết quả:</strong>{' '}
+                            {imaging.thyroid || 'chưa phát hiện bất thường'}
+                          </div>
+                        </>
                       )}
                     </div>
 
@@ -1961,8 +2095,23 @@ export function PatientEditor({
                               <Button
                                 key={opt}
                                 size="sm"
-                                variant={imaging.breast === opt ? 'default' : 'outline'}
-                                onClick={() => setImaging({ ...imaging, breast: opt })}
+                                variant={imaging.breast.includes(opt) ? 'default' : 'outline'}
+                                onClick={() => {
+                                  const currentNote = imaging.breast.trim();
+                                  if (currentNote.includes(opt)) {
+                                    // Nếu đã có thì xóa đi
+                                    const newNote = currentNote
+                                      .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                      .replace(/^[\s,]+|[\s,]+$/g, '')
+                                      .replace(/,\s*,/g, ',')
+                                      .trim();
+                                    setImaging({ ...imaging, breast: newNote });
+                                  } else {
+                                    // Nếu chưa có thì cộng thêm
+                                    const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                    setImaging({ ...imaging, breast: newNote });
+                                  }
+                                }}
                                 className="text-xs h-7"
                               >
                                 {opt}
@@ -1972,8 +2121,12 @@ export function PatientEditor({
                           <Input
                             value={imaging.breast}
                             onChange={(e) => setImaging({ ...imaging, breast: e.target.value })}
-                            placeholder="chưa ghi nhận bất thường"
+                            placeholder="không tổn thương khu trú trên siêu âm tuyến vú"
                           />
+                          <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                            <strong>Kết quả:</strong>{' '}
+                            {imaging.breast || 'không tổn thương khu trú trên siêu âm tuyến vú'}
+                          </div>
                         </>
                       )}
                     </div>
@@ -1988,11 +2141,43 @@ export function PatientEditor({
                         <span className="font-medium">Siêu âm Phụ khoa</span>
                       </label>
                       {imaging.gynecologyEnabled && (
-                        <Input
-                          value={imaging.gynecology}
-                          onChange={(e) => setImaging({ ...imaging, gynecology: e.target.value })}
-                          placeholder="chưa ghi nhận bất thường"
-                        />
+                        <>
+                          <div className="flex flex-wrap gap-1">
+                            {ULTRASOUND_GYNECOLOGY_OPTIONS.map((opt) => (
+                              <Button
+                                key={opt}
+                                size="sm"
+                                variant={imaging.gynecology.includes(opt) ? 'default' : 'outline'}
+                                onClick={() => {
+                                  const currentNote = imaging.gynecology.trim();
+                                  if (currentNote.includes(opt)) {
+                                    const newNote = currentNote
+                                      .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                      .replace(/^[\s,]+|[\s,]+$/g, '')
+                                      .replace(/,\s*,/g, ',')
+                                      .trim();
+                                    setImaging({ ...imaging, gynecology: newNote });
+                                  } else {
+                                    const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                    setImaging({ ...imaging, gynecology: newNote });
+                                  }
+                                }}
+                                className="text-xs h-7"
+                              >
+                                {opt}
+                              </Button>
+                            ))}
+                          </div>
+                          <Input
+                            value={imaging.gynecology}
+                            onChange={(e) => setImaging({ ...imaging, gynecology: e.target.value })}
+                            placeholder="chưa phát hiện bất thường"
+                          />
+                          <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                            <strong>Kết quả:</strong>{' '}
+                            {imaging.gynecology || 'chưa phát hiện bất thường'}
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>

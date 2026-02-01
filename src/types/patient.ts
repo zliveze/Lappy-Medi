@@ -133,6 +133,21 @@ export const ULTRASOUND_BREAST_OPTIONS = [
   'u xơ tuyến vú',
 ];
 
+export const ULTRASOUND_THYROID_OPTIONS = [
+  'Bướu giáp nhân',
+  'Nang tuyến giáp',
+  'Viêm tuyến giáp',
+  'TIRADS II',
+  'TIRADS III',
+];
+
+export const ULTRASOUND_GYNECOLOGY_OPTIONS = [
+  'U xơ tử cung',
+  'Nang buồng trứng',
+  'Polyp buồng tử cung',
+  'Viêm phần phụ',
+];
+
 export const VISION_OPTIONS = [
   '10/10', '9/10', '8/10', '7/10', '6/10',
   '5/10', '4/10', '3/10', '2/10', '1/10', '0/10',
