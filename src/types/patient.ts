@@ -96,6 +96,7 @@ export const DENTAL_OPTIONS = [
   'mất răng',
   'vôi răng',
   'mất nhiều răng',
+  'mảng bám nhiều',
   'hàm tháo lắp',
   'mòn cổ chân răng',
   'sâu răng đã điều trị',
@@ -123,6 +124,7 @@ export const ULTRASOUND_ABDOMEN_NOTE_OPTIONS = [
   'nang thận trái',
   'nang thận phải',
   'nang thận 2 bên',
+  'tiền liệt tuyến to',
   'phì đại tiền liệt tuyến',
   'nốt vôi tiền liệt tuyến',
 ];
