@@ -83,6 +83,7 @@ interface ExamState {
   dermatology: string;
 }
 
+
 interface ImagingState {
   xrayEnabled: boolean;
   xrayNotes: string[]; // Chuyển sang mảng ghi chú
@@ -98,7 +99,7 @@ interface ImagingState {
   gynecologyEnabled: boolean;
   gynecology: string;
   cardiacEnabled: boolean; // Siêu âm tim
-  cardiac: string;
+  cardiac: string; // Text với helper buttons
   // Điện tim
   ecgEnabled: boolean;
   heartRate: string;
@@ -321,7 +322,7 @@ export function PatientEditor({
         if (ecgText.includes(opt)) parsedEcgAxis = opt;
       });
 
-      // Parse heart rate
+      // Parse heart rate - handle both numeric and "đều" cases
       const hrMatch = ecgText.match(/Nhịp xoang[:\s]*(\d+)/i);
       const parsedHeartRate = hrMatch ? hrMatch[1] : '';
 
@@ -338,9 +339,10 @@ export function PatientEditor({
         // Skip if empty
         if (!cleanLine) return;
 
-        // Skip known parts
-        if (cleanLine.toLowerCase().includes('nhịp xoang')) return;
-        if (ECG_AXIS_OPTIONS.some(opt => cleanLine.includes(opt))) return;
+        // Skip known parts - but be more precise to avoid losing data
+        // Skip ONLY if the line is exactly or primarily about these items
+        if (cleanLine.toLowerCase().match(/^nhịp xoang[:\s]*(\d+|đều)/i)) return;
+        if (ECG_AXIS_OPTIONS.some(opt => cleanLine === opt)) return;
 
         parsedEcgNotes.push(cleanLine);
       });
@@ -851,7 +853,7 @@ export function PatientEditor({
       parts.push(` - Siêu âm tuyến giáp: ${imaging.thyroid || 'chưa phát hiện bất thường'}`);
     }
 
-    // Tim
+    // Tim - chỉ dùng text đơn giản
     if (imaging.cardiacEnabled) {
       parts.push(` - Siêu âm Tim: ${imaging.cardiac || 'chưa phát hiện bất thường'}`);
     }
@@ -863,10 +865,9 @@ export function PatientEditor({
   const buildEcg = useCallback((): string => {
     if (!imaging.ecgEnabled) return '';
     const ecgParts: string[] = [];
+    // Only add heart rate if user entered a value
     if (imaging.heartRate) {
       ecgParts.push(`Nhịp xoang: ${imaging.heartRate} l/p`);
-    } else {
-      ecgParts.push('Nhịp xoang đều');
     }
     if (imaging.ecgAxis) {
       ecgParts.push(imaging.ecgAxis);
@@ -2031,34 +2032,38 @@ export function PatientEditor({
                           <div className="space-y-1">
                             <Label className="text-sm font-medium">Gan:</Label>
                             <div className="flex flex-wrap gap-1">
-                              {LIVER_OPTIONS.map((opt) => (
-                                <Button
-                                  key={opt}
-                                  size="sm"
-                                  variant={imaging.abdomenNote.includes(opt) ? 'default' : 'outline'}
-                                  onClick={() => {
-                                    const currentNote = imaging.abdomenNote.trim();
-                                    // Loại bỏ tất cả các option gan khác trước (exclusive selection)
-                                    let cleanedNote = currentNote;
-                                    LIVER_OPTIONS.forEach(liverOpt => {
-                                      cleanedNote = cleanedNote.replace(new RegExp(liverOpt + ',?\\s*', 'gi'), '');
-                                    });
-                                    cleanedNote = cleanedNote.replace(/^[\s,]+|[\s,]+$/g, '').replace(/,\s*,/g, ',').trim();
+                              {LIVER_OPTIONS.map((opt) => {
+                                // Kiểm tra exact match để tránh "độ I" match với "độ II" hoặc "độ III"
+                                const isSelected = imaging.abdomenNote.split(',').map(s => s.trim()).includes(opt);
+                                return (
+                                  <Button
+                                    key={opt}
+                                    size="sm"
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    onClick={() => {
+                                      const currentNote = imaging.abdomenNote.trim();
+                                      // Loại bỏ tất cả các option gan khác trước (exclusive selection)
+                                      let cleanedNote = currentNote;
+                                      LIVER_OPTIONS.forEach(liverOpt => {
+                                        cleanedNote = cleanedNote.replace(new RegExp(liverOpt + ',?\\s*', 'gi'), '');
+                                      });
+                                      cleanedNote = cleanedNote.replace(/^[\s,]+|[\s,]+$/g, '').replace(/,\s*,/g, ',').trim();
 
-                                    if (currentNote.includes(opt)) {
-                                      // Nếu đã chọn thì bỏ chọn
-                                      setImaging({ ...imaging, abdomenNote: cleanedNote });
-                                    } else {
-                                      // Nếu chưa chọn thì chọn
-                                      const newNote = cleanedNote ? `${opt}, ${cleanedNote}` : opt;
-                                      setImaging({ ...imaging, abdomenNote: newNote });
-                                    }
-                                  }}
-                                  className="text-xs h-7"
-                                >
-                                  {opt}
-                                </Button>
-                              ))}
+                                      if (isSelected) {
+                                        // Nếu đã chọn thì bỏ chọn
+                                        setImaging({ ...imaging, abdomenNote: cleanedNote });
+                                      } else {
+                                        // Nếu chưa chọn thì chọn
+                                        const newNote = cleanedNote ? `${opt}, ${cleanedNote}` : opt;
+                                        setImaging({ ...imaging, abdomenNote: newNote });
+                                      }
+                                    }}
+                                    className="text-xs h-7"
+                                  >
+                                    {opt}
+                                  </Button>
+                                );
+                              })}
                             </div>
                           </div>
 
@@ -2319,8 +2324,8 @@ export function PatientEditor({
                       )}
                     </div>
 
-                    {/* Siêu âm Tim */}
-                    <div className={`p-3 border rounded-lg space-y-2 ${imaging.cardiacEnabled ? 'border-blue-400 bg-blue-50/30' : ''}`}>
+                    {/* Siêu âm Tim - Textarea với helper buttons */}
+                    <div className={`p-3 border rounded-lg space-y-3 ${imaging.cardiacEnabled ? 'border-blue-400 bg-blue-50/30' : ''}`}>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <Checkbox
                           checked={imaging.cardiacEnabled}
@@ -2330,40 +2335,129 @@ export function PatientEditor({
                       </label>
                       {imaging.cardiacEnabled && (
                         <>
-                          <div className="flex flex-wrap gap-1">
-                            {ULTRASOUND_CARDIAC_OPTIONS.map((opt) => (
-                              <Button
-                                key={opt}
-                                size="sm"
-                                variant={imaging.cardiac.includes(opt) ? 'default' : 'outline'}
-                                onClick={() => {
-                                  const currentNote = imaging.cardiac.trim();
-                                  if (currentNote.includes(opt)) {
-                                    const newNote = currentNote
-                                      .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
-                                      .replace(/^[\s,]+|[\s,]+$/g, '')
-                                      .replace(/,\s*,/g, ',')
-                                      .trim();
-                                    setImaging({ ...imaging, cardiac: newNote });
-                                  } else {
-                                    const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
-                                    setImaging({ ...imaging, cardiac: newNote });
-                                  }
-                                }}
-                                className="text-xs h-7"
-                              >
-                                {opt}
-                              </Button>
-                            ))}
+                          {/* Helper buttons - Chức năng */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Mẫu nhanh - Chức năng:</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                'chức năng tâm thu thất trái bình thường',
+                                'chức năng tâm trương thất trái bình thường',
+                                'chức năng tâm thu thất phải bình thường',
+                              ].map((text) => {
+                                const isSelected = imaging.cardiac.includes(text);
+                                return (
+                                  <Button
+                                    key={text}
+                                    size="sm"
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    onClick={() => {
+                                      const currentText = imaging.cardiac.trim();
+                                      if (isSelected) {
+                                        // Xóa text này
+                                        const newText = currentText
+                                          .replace(new RegExp(text + ',?\\s*', 'gi'), '')
+                                          .replace(/^[\s,]+|[\s,]+$/g, '')
+                                          .replace(/,\s*,/g, ',')
+                                          .trim();
+                                        setImaging({ ...imaging, cardiac: newText });
+                                      } else {
+                                        // Thêm text này
+                                        const newText = currentText ? `${currentText}, ${text}` : text;
+                                        setImaging({ ...imaging, cardiac: newText });
+                                      }
+                                    }}
+                                    className="text-xs h-7"
+                                  >
+                                    {text.replace('chức năng ', '').replace(' bình thường', ' BT')}
+                                  </Button>
+                                );
+                              })}
+                            </div>
                           </div>
-                          <Input
-                            value={imaging.cardiac}
-                            onChange={(e) => setImaging({ ...imaging, cardiac: e.target.value })}
-                            placeholder="chưa phát hiện bất thường"
-                          />
-                          <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                            <strong>Kết quả:</strong>{' '}
-                            {imaging.cardiac || 'chưa phát hiện bất thường'}
+
+                          {/* Helper buttons - Hở van */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Mẫu nhanh - Hở van:</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {ULTRASOUND_CARDIAC_OPTIONS.map((text) => {
+                                const isSelected = imaging.cardiac.includes(text);
+                                return (
+                                  <Button
+                                    key={text}
+                                    size="sm"
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    onClick={() => {
+                                      const currentText = imaging.cardiac.trim();
+                                      if (isSelected) {
+                                        const newText = currentText
+                                          .replace(new RegExp(text + ',?\\s*', 'gi'), '')
+                                          .replace(/^[\s,]+|[\s,]+$/g, '')
+                                          .replace(/,\s*,/g, ',')
+                                          .trim();
+                                        setImaging({ ...imaging, cardiac: newText });
+                                      } else {
+                                        const newText = currentText ? `${currentText}, ${text}` : text;
+                                        setImaging({ ...imaging, cardiac: newText });
+                                      }
+                                    }}
+                                    className="text-xs h-7"
+                                  >
+                                    {text}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Helper buttons - Khác */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Mẫu nhanh - Khác:</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                'tăng áp phổi',
+                                'không tăng áp phổi',
+                                'dày thất trái',
+                                'giãn nhĩ trái',
+                              ].map((text) => {
+                                const isSelected = imaging.cardiac.includes(text);
+                                return (
+                                  <Button
+                                    key={text}
+                                    size="sm"
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    onClick={() => {
+                                      const currentText = imaging.cardiac.trim();
+                                      if (isSelected) {
+                                        const newText = currentText
+                                          .replace(new RegExp(text + ',?\\s*', 'gi'), '')
+                                          .replace(/^[\s,]+|[\s,]+$/g, '')
+                                          .replace(/,\s*,/g, ',')
+                                          .trim();
+                                        setImaging({ ...imaging, cardiac: newText });
+                                      } else {
+                                        const newText = currentText ? `${currentText}, ${text}` : text;
+                                        setImaging({ ...imaging, cardiac: newText });
+                                      }
+                                    }}
+                                    className="text-xs h-7"
+                                  >
+                                    {text}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Textarea để chỉnh sửa */}
+                          <div>
+                            <Label className="text-sm font-medium">Kết quả (có thể chỉnh sửa trực tiếp):</Label>
+                            <Textarea
+                              value={imaging.cardiac}
+                              onChange={(e) => setImaging({ ...imaging, cardiac: e.target.value })}
+                              placeholder="chưa phát hiện bất thường"
+                              rows={4}
+                              className="mt-1"
+                            />
                           </div>
                         </>
                       )}
