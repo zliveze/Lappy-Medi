@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PatientData, BLOOD_PRESSURE_OPTIONS, INTERNAL_PREFIX_OPTIONS, INTERNAL_CONDITION_OPTIONS, INTERNAL_TIME_UNIT_OPTIONS, INTERNAL_TREATMENT_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS, ULTRASOUND_THYROID_OPTIONS, ULTRASOUND_GYNECOLOGY_OPTIONS } from '@/types/patient';
+import { PatientData, BLOOD_PRESSURE_OPTIONS, INTERNAL_PREFIX_OPTIONS, INTERNAL_CONDITION_OPTIONS, INTERNAL_TIME_UNIT_OPTIONS, INTERNAL_TREATMENT_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS, ULTRASOUND_THYROID_OPTIONS, ULTRASOUND_GYNECOLOGY_OPTIONS, ULTRASOUND_CARDIAC_OPTIONS } from '@/types/patient';
 import { calculateBMI, getPhysiqueFromBMI } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -97,6 +97,8 @@ interface ImagingState {
   breast: string;
   gynecologyEnabled: boolean;
   gynecology: string;
+  cardiacEnabled: boolean; // Siêu âm tim
+  cardiac: string;
   // Điện tim
   ecgEnabled: boolean;
   heartRate: string;
@@ -185,6 +187,8 @@ export function PatientEditor({
     breast: '',
     gynecologyEnabled: false,
     gynecology: '',
+    cardiacEnabled: false,
+    cardiac: '',
     ecgEnabled: false,
     heartRate: '',
     ecgAxis: '',
@@ -264,6 +268,7 @@ export function PatientEditor({
       const hasThyroid = ultrasoundText.toLowerCase().includes('giáp');
       const hasBreast = ultrasoundText.toLowerCase().includes('vú');
       const hasGynecology = ultrasoundText.toLowerCase().includes('phụ khoa');
+      const hasCardiac = ultrasoundText.toLowerCase().includes('tim');
 
       // Parse liver and kidney conditions from ultrasound text
       // Sort LIVER_OPTIONS từ độ cao đến thấp (III, II, I) để tránh "độ I" match sai trong "độ II"
@@ -308,6 +313,7 @@ export function PatientEditor({
       const parsedThyroid = parseUltrasoundSection(ultrasoundText, 'Tuyến giáp');
       const parsedBreast = parseUltrasoundSection(ultrasoundText, 'Tuyến vú');
       const parsedGynecology = parseUltrasoundSection(ultrasoundText, 'Phụ Khoa');
+      const parsedCardiac = parseUltrasoundSection(ultrasoundText, 'Tim');
 
       // Parse ECG axis
       let parsedEcgAxis = '';
@@ -354,6 +360,8 @@ export function PatientEditor({
         breast: parsedBreast,
         gynecologyEnabled: hasGynecology,
         gynecology: parsedGynecology,
+        cardiacEnabled: hasCardiac,
+        cardiac: parsedCardiac,
         ecgEnabled: !!ecgText,
         heartRate: parsedHeartRate,
         ecgAxis: parsedEcgAxis,
@@ -817,6 +825,7 @@ export function PatientEditor({
   // - Siêu âm Bụng: chưa phát hiện bất thường
   // - Siêu âm Phụ Khoa: chưa phát hiện bất thường
   // - Siêu âm tuyến giáp: chưa phát hiện bất thường
+  // - Siêu âm Tim: chưa phát hiện bất thường
   const buildUltrasound = useCallback((): string => {
     const parts: string[] = [];
 
@@ -840,6 +849,11 @@ export function PatientEditor({
     // Tuyến giáp
     if (imaging.thyroidEnabled) {
       parts.push(` - Siêu âm tuyến giáp: ${imaging.thyroid || 'chưa phát hiện bất thường'}`);
+    }
+
+    // Tim
+    if (imaging.cardiacEnabled) {
+      parts.push(` - Siêu âm Tim: ${imaging.cardiac || 'chưa phát hiện bất thường'}`);
     }
 
     return parts.join('\n');
@@ -2300,6 +2314,56 @@ export function PatientEditor({
                           <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
                             <strong>Kết quả:</strong>{' '}
                             {imaging.gynecology || 'chưa phát hiện bất thường'}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Siêu âm Tim */}
+                    <div className={`p-3 border rounded-lg space-y-2 ${imaging.cardiacEnabled ? 'border-blue-400 bg-blue-50/30' : ''}`}>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={imaging.cardiacEnabled}
+                          onCheckedChange={(checked) => setImaging({ ...imaging, cardiacEnabled: !!checked })}
+                        />
+                        <span className="font-medium">Siêu âm Tim</span>
+                      </label>
+                      {imaging.cardiacEnabled && (
+                        <>
+                          <div className="flex flex-wrap gap-1">
+                            {ULTRASOUND_CARDIAC_OPTIONS.map((opt) => (
+                              <Button
+                                key={opt}
+                                size="sm"
+                                variant={imaging.cardiac.includes(opt) ? 'default' : 'outline'}
+                                onClick={() => {
+                                  const currentNote = imaging.cardiac.trim();
+                                  if (currentNote.includes(opt)) {
+                                    const newNote = currentNote
+                                      .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                      .replace(/^[\s,]+|[\s,]+$/g, '')
+                                      .replace(/,\s*,/g, ',')
+                                      .trim();
+                                    setImaging({ ...imaging, cardiac: newNote });
+                                  } else {
+                                    const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                    setImaging({ ...imaging, cardiac: newNote });
+                                  }
+                                }}
+                                className="text-xs h-7"
+                              >
+                                {opt}
+                              </Button>
+                            ))}
+                          </div>
+                          <Input
+                            value={imaging.cardiac}
+                            onChange={(e) => setImaging({ ...imaging, cardiac: e.target.value })}
+                            placeholder="chưa phát hiện bất thường"
+                          />
+                          <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                            <strong>Kết quả:</strong>{' '}
+                            {imaging.cardiac || 'chưa phát hiện bất thường'}
                           </div>
                         </>
                       )}

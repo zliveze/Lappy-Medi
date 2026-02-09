@@ -152,6 +152,15 @@ export const ULTRASOUND_GYNECOLOGY_OPTIONS = [
   'viêm phần phụ',
 ];
 
+export const ULTRASOUND_CARDIAC_OPTIONS = [
+  'hở van 2 lá nhẹ',
+  'hở van 3 lá nhẹ',
+  'hở van động mạch chủ nhẹ',
+  'hở van động mạch phổi nhẹ',
+  'dày thất trái',
+  'giãn nhĩ trái',
+];
+
 export const VISION_OPTIONS = [
   '10/10', '9/10', '8/10', '7/10', '6/10',
   '5/10', '4/10', '3/10', '2/10', '1/10', '0/10',
