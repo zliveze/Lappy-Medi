@@ -196,13 +196,18 @@ export function PatientEditor({
     ecgNotes: [''],
   });
 
-
+  // Theo dõi patient CODE trước đó để phân biệt chuyển bệnh nhân vs lưu dữ liệu
+  const prevPatientCodeRef = useRef<string | undefined>();
 
   // Parse existing data when patient changes
   useEffect(() => {
     if (patient) {
-      // Luôn reset về tab "Thể Lực & Phân Loại" khi chuyển bệnh nhân
-      setActiveTab('vital');
+      // Chỉ reset tab khi chuyển sang bệnh nhân KHÁC (khác CODE), không reset khi lưu
+      const currentCode = String(patient['CODE'] || '');
+      if (prevPatientCodeRef.current !== undefined && prevPatientCodeRef.current !== currentCode) {
+        setActiveTab('vital');
+      }
+      prevPatientCodeRef.current = currentCode;
 
       // Basic info - Thông tin cơ bản
       setCode(String(patient['CODE'] || ''));
