@@ -123,7 +123,7 @@ export function PatientEditor({
   onClearData,
   canPaste,
 }: PatientEditorProps) {
-  // Tab state - giữ nguyên tab nếu bệnh nhân có dữ liệu, reset về vital nếu chưa có
+  // Tab state - luôn reset về "Thể Lực & Phân Loại" khi chuyển bệnh nhân
   const [activeTab, setActiveTab] = useState('vital');
 
   // Ref for auto-focus weight input
@@ -196,35 +196,13 @@ export function PatientEditor({
     ecgNotes: [''],
   });
 
-  // Theo dõi patient ID trước đó để biết khi nào chuyển bệnh nhân mới
-  const prevPatientIdRef = React.useRef<string | undefined>();
+
 
   // Parse existing data when patient changes
   useEffect(() => {
     if (patient) {
-      // Khi chuyển sang bệnh nhân MỚI (khác CODE):
-      // - Nếu bệnh nhân mới KHÔNG có dữ liệu -> reset về tab "Thể Lực & Phân Loại"
-      // - Nếu bệnh nhân mới ĐÃ có dữ liệu -> giữ nguyên tab hiện tại
-      const currentPatientId = String(patient['CODE'] || '');
-      if (prevPatientIdRef.current !== undefined && prevPatientIdRef.current !== currentPatientId) {
-        const hasWeight = !!patient['Cân nặng'];
-        const hasHeight = !!patient['Chiều cao'];
-        const hasExam = !!patient['KHÁM TỔNG QUÁT'];
-        const hasXray = !!patient['Xquang'];
-        const hasUltrasound = !!patient['Siêu âm'];
-        const hasEcg = !!patient['Điện tim'];
-        const hasClassification = !!patient['PHÂN LOẠI SỨC KHỎE'];
-        const hasPhysique = !!patient['THỂ TRẠNG'];
-
-        const hasAnyData = hasWeight || hasHeight || hasExam || hasXray || hasUltrasound || hasEcg || hasClassification || hasPhysique;
-
-        if (!hasAnyData) {
-          // Bệnh nhân chưa có dữ liệu -> bắt buộc về tab "Thể Lực & Phân Loại"
-          setActiveTab('vital');
-        }
-        // Nếu đã có dữ liệu -> giữ nguyên tab hiện tại (không setActiveTab)
-      }
-      prevPatientIdRef.current = currentPatientId;
+      // Luôn reset về tab "Thể Lực & Phân Loại" khi chuyển bệnh nhân
+      setActiveTab('vital');
 
       // Basic info - Thông tin cơ bản
       setCode(String(patient['CODE'] || ''));
