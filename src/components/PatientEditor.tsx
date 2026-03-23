@@ -497,8 +497,12 @@ export function PatientEditor({
         if (noteText && noteText !== 'Bình thường') newExam.bpNote = noteText;
       }
 
-      // Parse Mắt
-      if (lowerLine.includes('mắt')) {
+      // Parse Mắt - chỉ match dòng thuộc phần Mắt, tránh match từ "mắt" trong các phần khác (VD: ngoại khoa)
+      // Kiểm tra dòng có prefix "- Mắt:" hoặc chứa pattern thị lực mắt (P)/(T)
+      const isEyeSectionLine = /[-–]\s*mắt\s*:/i.test(line) || /mắt\s*\([PT]\)/i.test(line);
+      // Loại trừ các dòng thuộc chuyên khoa khác
+      const isOtherSection = /[-–]\s*(ngoại khoa|da liễu|nội khoa|tmh|rhm)\s*:/i.test(line);
+      if (isEyeSectionLine && !isOtherSection) {
         newExam.eyeEnabled = true;
         if (lowerLine.includes('ck ')) newExam.hasGlasses = true;
 
