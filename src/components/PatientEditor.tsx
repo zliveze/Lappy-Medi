@@ -518,7 +518,7 @@ export function PatientEditor({
                     newExam.visionLeftMode = visionMatchL[1].includes('ĐNT') || visionMatchL[1].includes('ST') ? 'dnt' : 'normal';
                 }
 
-                // Parse bệnh lý mắt - sắp xếp từ độ cao đến thấp để tránh "độ I" match sai trong "độ III"
+                // Parse bệnh lý mắt - tất cả đưa vào eyeNote để UI buttons có thể toggle đúng
                 // Tách các options thành 2 nhóm: mộng thịt (exclusive) và các bệnh khác
                 const mongThitOptions = EYE_OPTIONS_BOTH.filter(opt => opt.includes('mộng thịt'));
                 const otherEyeOptions = EYE_OPTIONS_BOTH.filter(opt => !opt.includes('mộng thịt'));
@@ -529,10 +529,13 @@ export function PatientEditor({
                     return countI(b) - countI(a);
                 });
 
+                // Collect parsed conditions vào danh sách tạm
+                const parsedEyeConditions: string[] = [];
+
                 // Chỉ lấy MỘT mức độ mộng thịt (cao nhất)
                 for (const opt of sortedMongThit) {
                     if (line.toLowerCase().includes(opt.toLowerCase())) {
-                        if (!newExam.eyeConditionsBoth.includes(opt)) newExam.eyeConditionsBoth.push(opt);
+                        parsedEyeConditions.push(opt);
                         break; // Dừng lại sau khi tìm thấy
                     }
                 }
@@ -540,18 +543,23 @@ export function PatientEditor({
                 // Parse các bệnh lý mắt khác (không exclusive)
                 otherEyeOptions.forEach(opt => {
                     if (line.toLowerCase().includes(opt.toLowerCase())) {
-                        if (!newExam.eyeConditionsBoth.includes(opt)) newExam.eyeConditionsBoth.push(opt);
+                        if (!parsedEyeConditions.includes(opt)) parsedEyeConditions.push(opt);
                     }
                 });
 
-                // Parse ghi chú mắt - loại bỏ các thông tin đã parse
+                // Parse ghi chú mắt - loại bỏ các thông tin đã parse (vision, CK, known conditions)
                 let eyeNote = line.replace(/^.*?:/, '').trim();
                 eyeNote = eyeNote.replace(/CK\s*/gi, '').replace(/mắt\s*\([PT]\)\s*\d+\/\d+/gi, '').replace(/mắt\s*\([PT]\)\s*ĐNT\s*\d+m/gi, '');
                 // Sắp xếp theo độ dài giảm dần để tránh "độ III" bị replace sai thành "II"
                 const sortedEyeOptions = [...EYE_OPTIONS_BOTH].sort((a, b) => b.length - a.length);
                 sortedEyeOptions.forEach(opt => { eyeNote = eyeNote.replace(new RegExp(opt, 'gi'), ''); });
                 eyeNote = eyeNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
-                if (eyeNote) newExam.eyeNote = eyeNote;
+
+                // Gộp tất cả parsed conditions + ghi chú thêm vào eyeNote
+                const allEyeParts = [...parsedEyeConditions];
+                if (eyeNote) allEyeParts.push(eyeNote);
+                newExam.eyeNote = allEyeParts.join(', ');
+                // eyeConditionsBoth/Left/Right để trống - mọi thứ quản lý qua eyeNote
             }
 
             // Parse TMH - điền toàn bộ vào entNote
@@ -786,18 +794,7 @@ export function PatientEditor({
             const prefix = exam.hasGlasses ? 'CK ' : '';
             let eyeText = `${prefix}mắt (P) ${exam.visionRight}, mắt (T) ${exam.visionLeft}`;
 
-            // Bệnh lý 2 mắt
-            if (exam.eyeConditionsBoth.length > 0) {
-                eyeText += `, ${exam.eyeConditionsBoth.join(', ')}`;
-            }
-            // Bệnh lý mắt phải
-            if (exam.eyeConditionsRight.length > 0) {
-                eyeText += `, mắt (P): ${exam.eyeConditionsRight.join(', ')}`;
-            }
-            // Bệnh lý mắt trái
-            if (exam.eyeConditionsLeft.length > 0) {
-                eyeText += `, mắt (T): ${exam.eyeConditionsLeft.join(', ')}`;
-            }
+            // Tất cả bệnh lý mắt được quản lý qua eyeNote
             if (exam.eyeNote) eyeText += `, ${exam.eyeNote}`;
             parts.push(` - Mắt: ${eyeText}`);
         }
@@ -1590,7 +1587,7 @@ export function PatientEditor({
                                                 {EYE_OPTIONS_BOTH.map((opt) => {
                                                     const isMongThit = opt.includes('mộng thịt');
                                                     // Kiểm tra trong cả eyeConditionsBoth (cũ) và eyeNote (mới) - dùng exact match
-                                                    const isSelected = exam.eyeConditionsBoth.includes(opt) || isExactMatchInNote(exam.eyeNote, opt);
+                                                    const isSelected = isExactMatchInNote(exam.eyeNote, opt);
                                                     return (
                                                         <Button
                                                             key={opt}
@@ -1609,8 +1606,10 @@ export function PatientEditor({
                                                                 } else {
                                                                     if (isMongThit) {
                                                                         // Mộng thịt exclusive - xóa các độ mộng thịt khác trước
+                                                                        // Sắp xếp dài nhất trước để tránh "độ I" match sai trong "độ III"
                                                                         let newNote = currentNote;
-                                                                        EYE_OPTIONS_BOTH.filter(o => o.includes('mộng thịt')).forEach(mongThitOpt => {
+                                                                        const sortedMongThitOpts = EYE_OPTIONS_BOTH.filter(o => o.includes('mộng thịt')).sort((a, b) => b.length - a.length);
+                                                                        sortedMongThitOpts.forEach(mongThitOpt => {
                                                                             newNote = newNote
                                                                                 .replace(new RegExp(mongThitOpt + ',?\\s*', 'gi'), '')
                                                                                 .replace(/^[\s,]+|[\s,]+$/g, '')
@@ -1645,15 +1644,6 @@ export function PatientEditor({
                                                 {(() => {
                                                     const prefix = exam.hasGlasses ? 'CK ' : '';
                                                     let eyeText = `${prefix}mắt (P) ${exam.visionRight}, mắt (T) ${exam.visionLeft}`;
-                                                    if (exam.eyeConditionsBoth.length > 0) {
-                                                        eyeText += `, ${exam.eyeConditionsBoth.join(', ')}`;
-                                                    }
-                                                    if (exam.eyeConditionsRight.length > 0) {
-                                                        eyeText += `, mắt (P): ${exam.eyeConditionsRight.join(', ')}`;
-                                                    }
-                                                    if (exam.eyeConditionsLeft.length > 0) {
-                                                        eyeText += `, mắt (T): ${exam.eyeConditionsLeft.join(', ')}`;
-                                                    }
                                                     if (exam.eyeNote) eyeText += `, ${exam.eyeNote}`;
                                                     return eyeText;
                                                 })()}
