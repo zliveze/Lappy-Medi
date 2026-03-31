@@ -957,6 +957,9 @@ export function PatientEditor({
 
     if (!patient) return null;
 
+    // Determine if preview should show (only on exam or imaging tabs)
+    const showPreview = activeTab === 'exam' || activeTab === 'imaging';
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -1845,27 +1848,6 @@ export function PatientEditor({
                                     )}
                                 </div>
                             </div>
-
-                            {/* === PREVIEW TỔNG HỢP KHÁM TỔNG QUÁT === */}
-                            <div className="mt-4 border-2 border-emerald-300 rounded-lg overflow-hidden">
-                                <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200 flex items-center gap-2">
-                                    <span className="text-emerald-700 font-semibold text-sm">📋 Preview: KHÁM TỔNG QUÁT</span>
-                                    <span className="text-emerald-500 text-xs">(Dữ liệu sẽ được lưu)</span>
-                                </div>
-                                <div className="p-4 bg-white">
-                                    {(() => {
-                                        const examText = buildGeneralExam();
-                                        if (!examText) {
-                                            return <span className="text-gray-400 italic text-sm">Chưa có dữ liệu khám tổng quát</span>;
-                                        }
-                                        return (
-                                            <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">
-                                                {examText}
-                                            </pre>
-                                        );
-                                    })()}
-                                </div>
-                            </div>
                         </TabsContent>
 
                         {/* Tab 3: Imaging */}
@@ -2482,52 +2464,6 @@ export function PatientEditor({
                                     </div>
                                 </div>
                             </div>
-
-                            {/* === PREVIEW TỔNG HỢP CẬN LÂM SÀNG === */}
-                            <div className="mt-4 border-2 border-indigo-300 rounded-lg overflow-hidden">
-                                <div className="bg-indigo-50 px-4 py-2 border-b border-indigo-200 flex items-center gap-2">
-                                    <span className="text-indigo-700 font-semibold text-sm">📋 Preview: CẬN LÂM SÀNG</span>
-                                    <span className="text-indigo-500 text-xs">(Dữ liệu sẽ được lưu)</span>
-                                </div>
-                                <div className="p-4 bg-white space-y-3">
-                                    {/* X-Quang */}
-                                    <div>
-                                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">X-Quang</span>
-                                        {(() => {
-                                            if (!imaging.xrayEnabled) {
-                                                return <p className="text-sm text-gray-400 italic">Không có</p>;
-                                            }
-                                            const validNotes = imaging.xrayNotes.filter(n => n && n.trim());
-                                            const xrayText = validNotes.length > 0
-                                                ? validNotes.map(n => ` - ${n}`).join('\n')
-                                                : ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang';
-                                            return <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">{xrayText}</pre>;
-                                        })()}
-                                    </div>
-                                    {/* Siêu âm */}
-                                    <div>
-                                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Siêu âm</span>
-                                        {(() => {
-                                            const usText = buildUltrasound();
-                                            if (!usText) {
-                                                return <p className="text-sm text-gray-400 italic">Không có</p>;
-                                            }
-                                            return <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">{usText}</pre>;
-                                        })()}
-                                    </div>
-                                    {/* Điện tim */}
-                                    <div>
-                                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Điện tim</span>
-                                        {(() => {
-                                            const ecgText = buildEcg();
-                                            if (!ecgText) {
-                                                return <p className="text-sm text-gray-400 italic">Không có</p>;
-                                            }
-                                            return <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">{ecgText}</pre>;
-                                        })()}
-                                    </div>
-                                </div>
-                            </div>
                         </TabsContent>
                     </div>
                 </Tabs>
@@ -2573,6 +2509,85 @@ export function PatientEditor({
                     </div>
                 </div>
             </DialogContent>
+
+            {/* === PREVIEW PANEL - floats beside the dialog === */}
+            {showPreview && isOpen && (
+                <div className="fixed z-[60] w-[340px] max-h-[90vh] overflow-y-auto rounded-lg border shadow-lg bg-white"
+                     style={{
+                         borderColor: activeTab === 'exam' ? '#6ee7b7' : '#a5b4fc',
+                         top: '50%',
+                         transform: 'translateY(-50%)',
+                         left: 'calc(50% + 512px + 12px)',
+                     }}>
+                    <div className="sticky top-0 z-10 px-4 py-2.5 border-b flex items-center gap-2"
+                         style={{ 
+                             backgroundColor: activeTab === 'exam' ? '#d1fae5' : '#e0e7ff',
+                             borderColor: activeTab === 'exam' ? '#a7f3d0' : '#c7d2fe'
+                         }}>
+                        <span className="font-semibold text-sm" 
+                              style={{ color: activeTab === 'exam' ? '#047857' : '#4338ca' }}>
+                            📋 {activeTab === 'exam' ? 'Preview: KHÁM TỔNG QUÁT' : 'Preview: CẬN LÂM SÀNG'}
+                        </span>
+                    </div>
+                    <div className="p-4 space-y-3">
+                        {activeTab === 'exam' && (
+                            (() => {
+                                const examText = buildGeneralExam();
+                                if (!examText) {
+                                    return <span className="text-gray-400 italic text-sm">Chưa có dữ liệu khám tổng quát</span>;
+                                }
+                                return (
+                                    <pre className="text-xs text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">
+                                        {examText}
+                                    </pre>
+                                );
+                            })()
+                        )}
+                        {activeTab === 'imaging' && (
+                            <>
+                                {/* X-Quang */}
+                                <div>
+                                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">X-Quang</span>
+                                    {(() => {
+                                        if (!imaging.xrayEnabled) {
+                                            return <p className="text-xs text-gray-400 italic mt-1">Không có</p>;
+                                        }
+                                        const validNotes = imaging.xrayNotes.filter(n => n && n.trim());
+                                        const xrayText = validNotes.length > 0
+                                            ? validNotes.map(n => ` - ${n}`).join('\n')
+                                            : ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang';
+                                        return <pre className="text-xs text-gray-800 whitespace-pre-wrap font-sans leading-relaxed mt-1">{xrayText}</pre>;
+                                    })()}
+                                </div>
+                                <hr className="border-gray-100" />
+                                {/* Siêu âm */}
+                                <div>
+                                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Siêu âm</span>
+                                    {(() => {
+                                        const usText = buildUltrasound();
+                                        if (!usText) {
+                                            return <p className="text-xs text-gray-400 italic mt-1">Không có</p>;
+                                        }
+                                        return <pre className="text-xs text-gray-800 whitespace-pre-wrap font-sans leading-relaxed mt-1">{usText}</pre>;
+                                    })()}
+                                </div>
+                                <hr className="border-gray-100" />
+                                {/* Điện tim */}
+                                <div>
+                                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Điện tim</span>
+                                    {(() => {
+                                        const ecgText = buildEcg();
+                                        if (!ecgText) {
+                                            return <p className="text-xs text-gray-400 italic mt-1">Không có</p>;
+                                        }
+                                        return <pre className="text-xs text-gray-800 whitespace-pre-wrap font-sans leading-relaxed mt-1">{ecgText}</pre>;
+                                    })()}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </Dialog>
     );
 }
