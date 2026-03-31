@@ -1845,6 +1845,27 @@ export function PatientEditor({
                                     )}
                                 </div>
                             </div>
+
+                            {/* === PREVIEW TỔNG HỢP KHÁM TỔNG QUÁT === */}
+                            <div className="mt-4 border-2 border-emerald-300 rounded-lg overflow-hidden">
+                                <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200 flex items-center gap-2">
+                                    <span className="text-emerald-700 font-semibold text-sm">📋 Preview: KHÁM TỔNG QUÁT</span>
+                                    <span className="text-emerald-500 text-xs">(Dữ liệu sẽ được lưu)</span>
+                                </div>
+                                <div className="p-4 bg-white">
+                                    {(() => {
+                                        const examText = buildGeneralExam();
+                                        if (!examText) {
+                                            return <span className="text-gray-400 italic text-sm">Chưa có dữ liệu khám tổng quát</span>;
+                                        }
+                                        return (
+                                            <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">
+                                                {examText}
+                                            </pre>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
                         </TabsContent>
 
                         {/* Tab 3: Imaging */}
@@ -2458,6 +2479,52 @@ export function PatientEditor({
                                                 </>
                                             )}
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* === PREVIEW TỔNG HỢP CẬN LÂM SÀNG === */}
+                            <div className="mt-4 border-2 border-indigo-300 rounded-lg overflow-hidden">
+                                <div className="bg-indigo-50 px-4 py-2 border-b border-indigo-200 flex items-center gap-2">
+                                    <span className="text-indigo-700 font-semibold text-sm">📋 Preview: CẬN LÂM SÀNG</span>
+                                    <span className="text-indigo-500 text-xs">(Dữ liệu sẽ được lưu)</span>
+                                </div>
+                                <div className="p-4 bg-white space-y-3">
+                                    {/* X-Quang */}
+                                    <div>
+                                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">X-Quang</span>
+                                        {(() => {
+                                            if (!imaging.xrayEnabled) {
+                                                return <p className="text-sm text-gray-400 italic">Không có</p>;
+                                            }
+                                            const validNotes = imaging.xrayNotes.filter(n => n && n.trim());
+                                            const xrayText = validNotes.length > 0
+                                                ? validNotes.map(n => ` - ${n}`).join('\n')
+                                                : ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang';
+                                            return <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">{xrayText}</pre>;
+                                        })()}
+                                    </div>
+                                    {/* Siêu âm */}
+                                    <div>
+                                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Siêu âm</span>
+                                        {(() => {
+                                            const usText = buildUltrasound();
+                                            if (!usText) {
+                                                return <p className="text-sm text-gray-400 italic">Không có</p>;
+                                            }
+                                            return <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">{usText}</pre>;
+                                        })()}
+                                    </div>
+                                    {/* Điện tim */}
+                                    <div>
+                                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Điện tim</span>
+                                        {(() => {
+                                            const ecgText = buildEcg();
+                                            if (!ecgText) {
+                                                return <p className="text-sm text-gray-400 italic">Không có</p>;
+                                            }
+                                            return <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">{ecgText}</pre>;
+                                        })()}
                                     </div>
                                 </div>
                             </div>
