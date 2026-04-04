@@ -196,6 +196,33 @@ export function PatientEditor({
         ecgNotes: [''],
     });
 
+    // === Dirty state tracking (theo dõi trạng thái lưu trong phiên chỉnh sửa) ===
+    const [isDirty, setIsDirty] = useState(false);
+    const isSettlingRef = useRef(false); // Tránh đánh dấu dirty khi đang load dữ liệu bệnh nhân
+
+    // Reset dirty state khi chuyển bệnh nhân
+    useEffect(() => {
+        if (patient) {
+            const hasData = 
+                (patient['Cân nặng'] !== undefined && patient['Cân nặng'] !== null && String(patient['Cân nặng']).trim() !== '') ||
+                (patient['KHÁM TỔNG QUÁT'] !== undefined && patient['KHÁM TỔNG QUÁT'] !== null && String(patient['KHÁM TỔNG QUÁT']).trim() !== '') ||
+                (patient['PHÂN LOẠI SỨC KHỎE'] !== undefined && patient['PHÂN LOẠI SỨC KHỎE'] !== null && String(patient['PHÂN LOẠI SỨC KHỎE']).trim() !== '');
+            isSettlingRef.current = true;
+            setIsDirty(!hasData); // Nếu đã có data → không dirty; chưa có → dirty
+            const timer = setTimeout(() => {
+                isSettlingRef.current = false;
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [patient]);
+
+    // Theo dõi thay đổi form state → đánh dấu dirty
+    useEffect(() => {
+        if (isSettlingRef.current) return; // Bỏ qua khi đang load dữ liệu
+        setIsDirty(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [weight, height, exam, imaging]);
+
     // Theo dõi index trước đó để phân biệt chuyển bệnh nhân vs lưu dữ liệu
     const prevIndexRef = useRef<number | undefined>();
 
@@ -922,6 +949,7 @@ export function PatientEditor({
         const updatedPatient = buildUpdatedPatient();
         if (updatedPatient) {
             onSave(updatedPatient);
+            setIsDirty(false);
         }
     };
 
@@ -929,6 +957,7 @@ export function PatientEditor({
         const updatedPatient = buildUpdatedPatient();
         if (updatedPatient) {
             onSaveAndClose(updatedPatient);
+            setIsDirty(false);
         }
     };
 
@@ -964,9 +993,32 @@ export function PatientEditor({
             <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
                 <DialogHeader className="flex-shrink-0">
                     <div className="flex items-center justify-between">
-                        <DialogTitle className="text-xl">
-                            Chỉnh sửa: {patient['CODE']} - {patient['HỌ VÀ TÊN'] || patient['HỌ TÊN'] || ''} {patient['NS'] ? `(${patient['NS']})` : ''}
-                        </DialogTitle>
+                        <div className="flex items-center gap-3">
+                            <DialogTitle className="text-xl">
+                                Chỉnh sửa: {patient['CODE']} - {patient['HỌ VÀ TÊN'] || patient['HỌ TÊN'] || ''} {patient['NS'] ? `(${patient['NS']})` : ''}
+                            </DialogTitle>
+                            {/* Trạng thái lưu của bệnh nhân */}
+                            <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                                    !isDirty
+                                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                                        : 'bg-amber-100 text-amber-700 border border-amber-300'
+                                }`}
+                                title={!isDirty ? 'Dữ liệu đã được lưu' : 'Có thay đổi chưa lưu'}
+                            >
+                                {!isDirty ? (
+                                    <>
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                        Đã lưu
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                        Chưa lưu
+                                    </>
+                                )}
+                            </span>
+                        </div>
                         <div className="flex items-center gap-2 mr-8">
                             {/* Copy/Paste/Clear buttons */}
                             {onCopy && (
