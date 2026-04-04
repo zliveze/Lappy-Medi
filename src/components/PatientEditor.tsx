@@ -39,7 +39,7 @@ interface BPReading {
 // Entry cho mỗi bệnh lý nội khoa
 interface InternalConditionEntry {
     prefix: string; // "Theo dõi", "Tăng", ""
-    condition: string; // "THA", "ĐTĐ", ..., "Mạch nhanh"
+    condition: string; // "tăng huyết áp", "ĐTĐ", ..., "Mạch nhanh"
     timeValue: string; // số (ví dụ: "3") - dùng cho các bệnh lý thông thường
     timeUnit: string; // "ngày", "tuần", "tháng", "năm"
     treatment: string; // "đang điều trị", "không điều trị", "điều trị không thường xuyên", "bỏ điều trị", ""
@@ -438,8 +438,8 @@ export function PatientEditor({
                 // Parse bệnh lý nội khoa mới với format: [prefix] [condition] khoảng [time] [unit] [treatment]
                 const internalConditions: InternalConditionEntry[] = [];
                 const conditionPatterns = [
-                    // Pattern: theo dõi THA khoảng 3 tháng đang điều trị
-                    /(?:(theo dõi|tăng)\s+)?(THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi
+                    // Pattern: theo dõi tăng huyết áp khoảng 3 tháng đang điều trị
+                    /(?:(theo dõi|tăng)\s+)?(tăng huyết áp|THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi
                 ];
 
                 // Parse pattern riêng cho "mạch nhanh" với nhịp tim
@@ -490,7 +490,7 @@ export function PatientEditor({
                     noteText = noteText.replace(new RegExp(opt, 'gi'), '');
                 });
                 // Remove parsed conditions
-                noteText = noteText.replace(/(?:theo dõi|tăng)?\s*(?:THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi, '');
+                noteText = noteText.replace(/(?:theo dõi|tăng)?\s*(?:tăng huyết áp|THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi, '');
                 // Remove parsed "mạch nhanh" với nhịp tim
                 noteText = noteText.replace(/(?:theo dõi\s+)?mạch nhanh(?:\s*\(\d+\))?/gi, '');
                 noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '').replace(/\([^)]*\)/g, '').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
@@ -735,10 +735,10 @@ export function PatientEditor({
                 }
             }
 
-            // Kiểm tra có bệnh lý THA không
-            const hasTHA = exam.internalConditions.some(entry => entry.condition === 'THA');
+            // Kiểm tra có bệnh lý tăng huyết áp không
+            const hasTHA = exam.internalConditions.some(entry => entry.condition === 'tăng huyết áp' || entry.condition === 'THA');
 
-            // Nếu không có THA, thêm huyết áp ở đầu như cũ
+            // Nếu không có tăng huyết áp, thêm huyết áp ở đầu như cũ
             if (!hasTHA && bpText) {
                 internalParts.push(bpText);
             }
@@ -765,8 +765,8 @@ export function PatientEditor({
 
                     let conditionText = parts.join(' ');
 
-                    // Nếu là THA và có huyết áp, thêm vào trong ngoặc
-                    if (entry.condition === 'THA' && bpText) {
+                    // Nếu là tăng huyết áp và có huyết áp, thêm vào trong ngoặc
+                    if ((entry.condition === 'tăng huyết áp' || entry.condition === 'THA') && bpText) {
                         conditionText += ` (${bpText})`;
                     }
 
@@ -1359,7 +1359,7 @@ export function PatientEditor({
                                                         ...exam,
                                                         internalConditions: [...exam.internalConditions, {
                                                             prefix: '',
-                                                            condition: 'THA',
+                                                            condition: 'tăng huyết áp',
                                                             timeValue: '',
                                                             timeUnit: '',
                                                             treatment: ''

@@ -51,7 +51,7 @@ export const BLOOD_PRESSURE_OPTIONS_LEGACY = [
 
 // Options mới cho giao diện Nội khoa linh hoạt
 export const INTERNAL_PREFIX_OPTIONS = ['Theo dõi', 'Tăng', '']; // Rỗng = không có prefix
-export const INTERNAL_CONDITION_OPTIONS = ['THA', 'Mạch nhanh'];
+export const INTERNAL_CONDITION_OPTIONS = ['tăng huyết áp', 'Mạch nhanh'];
 export const INTERNAL_TIME_UNIT_OPTIONS = ['ngày', 'tuần', 'tháng', 'năm'];
 export const INTERNAL_TREATMENT_OPTIONS = ['đang điều trị', 'không điều trị', 'điều trị không thường xuyên', 'bỏ điều trị', ''];
 
