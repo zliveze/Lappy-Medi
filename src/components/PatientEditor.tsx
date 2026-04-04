@@ -444,8 +444,10 @@ export function PatientEditor({
             const lowerLine = line.toLowerCase();
 
             // Parse Nội khoa
-            if (lowerLine.includes('nội khoa') || lowerLine.includes('ha ') || lowerLine.includes('huyết áp') ||
-                lowerLine.includes('tăng huyết áp') || lowerLine.includes('đtđ') || lowerLine.includes('theo dõi')) {
+            // Loại trừ các dòng thuộc chuyên khoa khác để tránh match "theo dõi", "huyết áp" sai
+            const isOtherSpecialty = /[-–]\s*(tmh|rhm|mắt|ngoại khoa|da liễu)\s*:/i.test(line);
+            if (!isOtherSpecialty && (lowerLine.includes('nội khoa') || lowerLine.includes('ha ') || lowerLine.includes('huyết áp') ||
+                lowerLine.includes('tăng huyết áp') || lowerLine.includes('đtđ') || lowerLine.includes('theo dõi'))) {
                 newExam.internalEnabled = true;
                 const readings: BPReading[] = [];
                 const bpRegex = /L?(\d)?\s*HA\s*(\d+)\/(\d+)/gi;
