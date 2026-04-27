@@ -690,7 +690,7 @@ export default function Home() {
                 Export
               </Button>
 
-              <Button
+              {/* <Button
                 variant="secondary"
                 size="sm"
                 onClick={handleLoadSample}
@@ -698,7 +698,7 @@ export default function Home() {
               >
                 <Database className="h-3 w-3" />
                 Mẫu
-              </Button>
+              </Button> */}
 
               <Button
                 size="sm"

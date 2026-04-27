@@ -443,11 +443,8 @@ export function PatientEditor({
         lines.forEach(line => {
             const lowerLine = line.toLowerCase();
 
-            // Parse Nội khoa
-            // Loại trừ các dòng thuộc chuyên khoa khác để tránh match "theo dõi", "huyết áp" sai
-            const isOtherSpecialty = /[-–]\s*(tmh|rhm|mắt|ngoại khoa|da liễu)\s*:/i.test(line);
-            if (!isOtherSpecialty && (lowerLine.includes('nội khoa') || lowerLine.includes('ha ') || lowerLine.includes('huyết áp') ||
-                lowerLine.includes('tăng huyết áp') || lowerLine.includes('đtđ') || lowerLine.includes('theo dõi'))) {
+            // Parse Nội khoa - chỉ match dòng có prefix "- Nội khoa:"
+            if (/[-–]\s*nội khoa\s*:/i.test(line)) {
                 newExam.internalEnabled = true;
                 const readings: BPReading[] = [];
                 const bpRegex = /L?(\d)?\s*HA\s*(\d+)\/(\d+)/gi;
@@ -464,65 +461,9 @@ export function PatientEditor({
                     }
                 }
 
-                // Parse bệnh lý nội khoa mới với format: [prefix] [condition] khoảng [time] [unit] [treatment]
-                const internalConditions: InternalConditionEntry[] = [];
-                const conditionPatterns = [
-                    // Pattern: theo dõi tăng huyết áp khoảng 3 tháng đang điều trị
-                    /(?:(theo dõi|tăng)\s+)?(tăng huyết áp|THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi
-                ];
-
-                // Parse pattern riêng cho "mạch nhanh" với nhịp tim
-                const machNhanhPattern = /(?:(theo dõi)\s+)?mạch nhanh(?:\s*\((\d+)\))?/gi;
-                let machNhanhMatch;
-                while ((machNhanhMatch = machNhanhPattern.exec(line)) !== null) {
-                    internalConditions.push({
-                        prefix: machNhanhMatch[1] || '',
-                        condition: 'Mạch nhanh',
-                        timeValue: '',
-                        timeUnit: '',
-                        treatment: '',
-                        heartRate: machNhanhMatch[2] || ''
-                    });
-                }
-
-                for (const pattern of conditionPatterns) {
-                    let condMatch;
-                    while ((condMatch = pattern.exec(line)) !== null) {
-                        internalConditions.push({
-                            prefix: condMatch[1] || '',
-                            condition: condMatch[2] || '',
-                            timeValue: condMatch[3] || '',
-                            timeUnit: condMatch[4] || '',
-                            treatment: condMatch[5] || ''
-                        });
-                    }
-                }
-
-                if (internalConditions.length > 0) {
-                    newExam.internalConditions = internalConditions;
-                }
-
-                // Fallback: Check legacy options for backward compatibility
-                if (internalConditions.length === 0) {
-                    const sortedBpOptions = [...BLOOD_PRESSURE_OPTIONS].sort((a, b) => b.length - a.length);
-                    for (const opt of sortedBpOptions) {
-                        if (line.toLowerCase().includes(opt.toLowerCase())) {
-                            newExam.bpCondition = opt;
-                            break;
-                        }
-                    }
-                }
-
-                // Parse ghi chú nội khoa - phần text sau các thông tin đã parse
+                // Lấy ghi chú nội khoa - text sau dấu :, chỉ loại bỏ phần HA đã parse
                 let noteText = line.replace(/^.*?:/, '').trim();
-                BLOOD_PRESSURE_OPTIONS.forEach(opt => {
-                    noteText = noteText.replace(new RegExp(opt, 'gi'), '');
-                });
-                // Remove parsed conditions
-                noteText = noteText.replace(/(?:theo dõi|tăng)?\s*(?:tăng huyết áp|THA|ĐTĐ|Rối loạn mỡ máu|Gout)(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi, '');
-                // Remove parsed "mạch nhanh" với nhịp tim
-                noteText = noteText.replace(/(?:theo dõi\s+)?mạch nhanh(?:\s*\(\d+\))?/gi, '');
-                noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '').replace(/\([^)]*\)/g, '').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+                noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
                 if (noteText && noteText !== 'Bình thường') newExam.bpNote = noteText;
             }
 
@@ -547,52 +488,15 @@ export function PatientEditor({
                     newExam.visionLeftMode = visionMatchL[1].includes('ĐNT') || visionMatchL[1].includes('ST') ? 'dnt' : 'normal';
                 }
 
-                // Parse bệnh lý mắt - tất cả đưa vào eyeNote để UI buttons có thể toggle đúng
-                // Tách các options thành 2 nhóm: mộng thịt (exclusive) và các bệnh khác
-                const mongThitOptions = EYE_OPTIONS_BOTH.filter(opt => opt.includes('mộng thịt'));
-                const otherEyeOptions = EYE_OPTIONS_BOTH.filter(opt => !opt.includes('mộng thịt'));
-
-                // Sắp xếp mộng thịt từ độ cao đến thấp (III, II, I)
-                const sortedMongThit = [...mongThitOptions].sort((a, b) => {
-                    const countI = (str: string) => (str.match(/I/g) || []).length;
-                    return countI(b) - countI(a);
-                });
-
-                // Collect parsed conditions vào danh sách tạm
-                const parsedEyeConditions: string[] = [];
-
-                // Chỉ lấy MỘT mức độ mộng thịt (cao nhất)
-                for (const opt of sortedMongThit) {
-                    if (line.toLowerCase().includes(opt.toLowerCase())) {
-                        parsedEyeConditions.push(opt);
-                        break; // Dừng lại sau khi tìm thấy
-                    }
-                }
-
-                // Parse các bệnh lý mắt khác (không exclusive)
-                otherEyeOptions.forEach(opt => {
-                    if (line.toLowerCase().includes(opt.toLowerCase())) {
-                        if (!parsedEyeConditions.includes(opt)) parsedEyeConditions.push(opt);
-                    }
-                });
-
-                // Parse ghi chú mắt - loại bỏ các thông tin đã parse (vision, CK, known conditions)
+                // Parse ghi chú mắt - loại bỏ thông tin thị lực đã parse, giữ nguyên phần còn lại
                 let eyeNote = line.replace(/^.*?:/, '').trim();
-                eyeNote = eyeNote.replace(/CK\s*/gi, '').replace(/mắt\s*\([PT]\)\s*\d+\/\d+/gi, '').replace(/mắt\s*\([PT]\)\s*ĐNT\s*\d+m/gi, '');
-                // Sắp xếp theo độ dài giảm dần để tránh "độ III" bị replace sai thành "II"
-                const sortedEyeOptions = [...EYE_OPTIONS_BOTH].sort((a, b) => b.length - a.length);
-                sortedEyeOptions.forEach(opt => { eyeNote = eyeNote.replace(new RegExp(opt, 'gi'), ''); });
+                eyeNote = eyeNote.replace(/CK\s*/gi, '').replace(/mắt\s*\([PT]\)\s*(?:\d+\/\d+|ĐNT\s*\d+m|ST\([+-]\))/gi, '');
                 eyeNote = eyeNote.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
-
-                // Gộp tất cả parsed conditions + ghi chú thêm vào eyeNote
-                const allEyeParts = [...parsedEyeConditions];
-                if (eyeNote) allEyeParts.push(eyeNote);
-                newExam.eyeNote = allEyeParts.join(', ');
-                // eyeConditionsBoth/Left/Right để trống - mọi thứ quản lý qua eyeNote
+                if (eyeNote && eyeNote !== 'Bình thường') newExam.eyeNote = eyeNote;
             }
 
             // Parse TMH - điền toàn bộ vào entNote
-            if (lowerLine.includes('tmh') || lowerLine.includes('amidan') || lowerLine.includes('viêm họng') || lowerLine.includes('viêm mũi')) {
+            if (/[-–]\s*tmh\s*:/i.test(line)) {
                 newExam.entEnabled = true;
                 // Lấy toàn bộ text sau dấu :
                 let entNote = line.replace(/^.*?:/, '').trim();
@@ -601,7 +505,7 @@ export function PatientEditor({
             }
 
             // Parse RHM - điền toàn bộ vào dentalNote
-            if (lowerLine.includes('rhm') || lowerLine.includes('sức nhai') || lowerLine.includes('răng')) {
+            if (/[-–]\s*rhm\s*:/i.test(line)) {
                 newExam.dentalEnabled = true;
                 const chewMatch = line.match(/sức nhai\s*(\d+)%/i);
                 if (chewMatch) newExam.chewingPower = parseInt(chewMatch[1]);
