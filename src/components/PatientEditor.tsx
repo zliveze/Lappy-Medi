@@ -345,17 +345,7 @@ export function PatientEditor({
             const parsedGynecology = parseUltrasoundSection(ultrasoundText, 'Phụ Khoa');
             const parsedCardiac = parseUltrasoundSection(ultrasoundText, 'Tim');
 
-            // Parse ECG axis
-            let parsedEcgAxis = '';
-            ECG_AXIS_OPTIONS.forEach(opt => {
-                if (ecgText.includes(opt)) parsedEcgAxis = opt;
-            });
-
-            // Parse heart rate - handle both numeric and "đều" cases
-            const hrMatch = ecgText.match(/Nhịp xoang[:\s]*(\d+)/i);
-            const parsedHeartRate = hrMatch ? hrMatch[1] : '';
-
-            // Parse ECG notes from lines
+            // Parse ECG - đưa tất cả vào ghi chú để người dùng tùy chỉnh
             const parsedEcgNotes: string[] = [];
             const ecgLines = ecgText.split('\n');
 
@@ -367,11 +357,6 @@ export function PatientEditor({
 
                 // Skip if empty
                 if (!cleanLine) return;
-
-                // Skip known parts - but be more precise to avoid losing data
-                // Skip ONLY if the line is exactly or primarily about these items
-                if (cleanLine.toLowerCase().match(/^nhịp xoang[:\s]*(\d+|đều)/i)) return;
-                if (ECG_AXIS_OPTIONS.some(opt => cleanLine === opt)) return;
 
                 parsedEcgNotes.push(cleanLine);
             });
@@ -394,8 +379,8 @@ export function PatientEditor({
                 cardiacEnabled: hasCardiac,
                 cardiac: parsedCardiac,
                 ecgEnabled: !!ecgText,
-                heartRate: parsedHeartRate,
-                ecgAxis: parsedEcgAxis,
+                heartRate: '',
+                ecgAxis: '',
                 ecgNotes: parsedEcgNotes,
             });
         }
@@ -1823,17 +1808,36 @@ export function PatientEditor({
                                         <>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div>
-                                                    <Label>Nhịp tim (l/p)</Label>
+                                                    <Label>Nhịp tim (l/p) — nhập xong nhấn Enter</Label>
                                                     <Input
                                                         type="number"
                                                         value={imaging.heartRate}
                                                         onChange={(e) => setImaging({ ...imaging, heartRate: e.target.value })}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && imaging.heartRate.trim()) {
+                                                                e.preventDefault();
+                                                                const hrText = `Nhịp xoang: ${imaging.heartRate.trim()} l/p`;
+                                                                const newNotes = [hrText, ...imaging.ecgNotes.filter(n => n.trim())];
+                                                                if (newNotes.length === 0) newNotes.push('');
+                                                                setImaging({ ...imaging, heartRate: '', ecgNotes: newNotes });
+                                                            }
+                                                        }}
                                                         placeholder="VD: 75"
                                                     />
                                                 </div>
                                                 <div>
                                                     <Label>Trục điện tim</Label>
-                                                    <Select value={imaging.ecgAxis || 'none'} onValueChange={(v) => setImaging({ ...imaging, ecgAxis: v === 'none' ? '' : v })}>
+                                                    <Select value={imaging.ecgAxis || 'none'} onValueChange={(v) => {
+                                                        const axisValue = v === 'none' ? '' : v;
+                                                        if (axisValue) {
+                                                            // Thêm ngay vào ghi chú và clear field
+                                                            const newNotes = [...imaging.ecgNotes.filter(n => n.trim()), axisValue];
+                                                            if (newNotes.length === 0) newNotes.push('');
+                                                            setImaging({ ...imaging, ecgAxis: '', ecgNotes: newNotes });
+                                                        } else {
+                                                            setImaging({ ...imaging, ecgAxis: '' });
+                                                        }
+                                                    }}>
                                                         <SelectTrigger><SelectValue placeholder="Chọn trục..." /></SelectTrigger>
                                                         <SelectContent>
                                                             <SelectItem value="none">Không ghi</SelectItem>
