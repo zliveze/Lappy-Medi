@@ -446,9 +446,50 @@ export function PatientEditor({
                     }
                 }
 
-                // Lấy ghi chú nội khoa - text sau dấu :, chỉ loại bỏ phần HA đã parse
+                // Parse bệnh lý nội khoa - CHỈ match cụm từ đầy đủ (KHÔNG dùng viết tắt THA, ĐTĐ để tránh match sai)
+                const internalConditions: InternalConditionEntry[] = [];
+
+                // Pattern cho "tăng huyết áp" (cụm từ đầy đủ, an toàn)
+                const thaPattern = /(?:(theo dõi)\s+)?tăng huyết áp(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi;
+                let thaMatch;
+                while ((thaMatch = thaPattern.exec(line)) !== null) {
+                    internalConditions.push({
+                        prefix: thaMatch[1] || '',
+                        condition: 'tăng huyết áp',
+                        timeValue: thaMatch[2] || '',
+                        timeUnit: thaMatch[3] || '',
+                        treatment: thaMatch[4] || ''
+                    });
+                }
+
+                // Pattern cho "mạch nhanh"
+                const machNhanhPattern = /(?:(theo dõi)\s+)?mạch nhanh(?:\s*\((\d+)\))?/gi;
+                let machNhanhMatch;
+                while ((machNhanhMatch = machNhanhPattern.exec(line)) !== null) {
+                    internalConditions.push({
+                        prefix: machNhanhMatch[1] || '',
+                        condition: 'Mạch nhanh',
+                        timeValue: '',
+                        timeUnit: '',
+                        treatment: '',
+                        heartRate: machNhanhMatch[2] || ''
+                    });
+                }
+
+                if (internalConditions.length > 0) {
+                    newExam.internalConditions = internalConditions;
+                }
+
+                // Parse ghi chú - loại bỏ phần đã parse (conditions, HA, ngoặc)
                 let noteText = line.replace(/^.*?:/, '').trim();
-                noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '').replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+                // Remove parsed conditions
+                noteText = noteText.replace(/(?:theo dõi\s+)?tăng huyết áp(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi, '');
+                noteText = noteText.replace(/(?:theo dõi\s+)?mạch nhanh(?:\s*\(\d+\))?/gi, '');
+                // Remove HA readings (cả trong ngoặc lẫn ngoài)
+                noteText = noteText.replace(/\(\s*(?:L?\d?\s*HA\s*\d+\/\d+\s*mmHg(?:,\s*)?)+\s*\)/gi, '');
+                noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '');
+                noteText = noteText.replace(/\(\s*\)/g, '');
+                noteText = noteText.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
                 if (noteText && noteText !== 'Bình thường') newExam.bpNote = noteText;
             }
 
@@ -647,27 +688,24 @@ export function PatientEditor({
                 if (validReadings.length === 1) {
                     bpText = `HA ${validReadings[0].systolic}/${validReadings[0].diastolic} mmHg`;
                 } else {
-                    // Format: L1 HA 140/90 mmHg, L2 HA 150/90 mmHg
                     const bpParts = validReadings.map((r, i) => `L${i + 1} HA ${r.systolic}/${r.diastolic} mmHg`);
                     bpText = bpParts.join(', ');
                 }
             }
 
-            // Kiểm tra có bệnh lý tăng huyết áp không
-            const hasTHA = exam.internalConditions.some(entry => entry.condition === 'tăng huyết áp' || entry.condition === 'THA');
-
-            // Nếu không có tăng huyết áp, thêm huyết áp ở đầu như cũ
-            if (!hasTHA && bpText) {
-                internalParts.push(bpText);
-            }
-
-            // Build bệnh lý nội khoa mới
+            // Build bệnh lý nội khoa
             if (exam.internalConditions.length > 0) {
+                const hasTHA = exam.internalConditions.some(entry => entry.condition === 'tăng huyết áp' || entry.condition === 'THA');
+
+                // Nếu không có tăng huyết áp trong conditions, thêm HA riêng ở đầu
+                if (!hasTHA && bpText) {
+                    internalParts.push(bpText);
+                }
+
                 const conditionTexts = exam.internalConditions.map(entry => {
                     const parts: string[] = [];
                     if (entry.prefix) parts.push(entry.prefix.toLowerCase());
 
-                    // Xử lý riêng cho "Mạch nhanh" - thêm nhịp tim trong ngoặc
                     if (entry.condition === 'Mạch nhanh') {
                         parts.push('mạch nhanh');
                         if (entry.heartRate) {
@@ -683,7 +721,7 @@ export function PatientEditor({
 
                     let conditionText = parts.join(' ');
 
-                    // Nếu là tăng huyết áp và có huyết áp, thêm vào trong ngoặc
+                    // Nếu là tăng huyết áp, thêm HA vào trong ngoặc
                     if ((entry.condition === 'tăng huyết áp' || entry.condition === 'THA') && bpText) {
                         conditionText += ` (${bpText})`;
                     }
@@ -693,14 +731,23 @@ export function PatientEditor({
                 if (conditionTexts.length > 0) {
                     internalParts.push(...conditionTexts);
                 }
-            }
 
-            // Giữ lại bpCondition cũ cho tương thích ngược
-            if (exam.bpCondition && exam.internalConditions.length === 0) {
-                internalParts.push(exam.bpCondition);
-            }
+                // Thêm ghi chú nếu có
+                if (exam.bpNote) internalParts.push(exam.bpNote);
+            } else {
+                // Không có conditions từ UI → dùng bpNote trực tiếp (đã chứa format đúng từ data cũ)
+                if (exam.bpNote) {
+                    internalParts.push(exam.bpNote);
+                } else if (bpText) {
+                    // Chỉ có HA, không có ghi chú và không có conditions
+                    internalParts.push(bpText);
+                }
 
-            if (exam.bpNote) internalParts.push(exam.bpNote);
+                // Giữ lại bpCondition cũ cho tương thích ngược
+                if (exam.bpCondition) {
+                    internalParts.push(exam.bpCondition);
+                }
+            }
 
             if (internalParts.length > 0) {
                 parts.push(` - Nội khoa: ${internalParts.join(', ')}`);
@@ -1333,7 +1380,24 @@ export function PatientEditor({
                                                                 }
                                                                 if (entry.treatment) parts.push(entry.treatment);
                                                             }
-                                                            return parts.join(' ');
+
+                                                            let conditionText = parts.join(' ');
+
+                                                            // Hiển thị HA trong ngoặc cho tăng huyết áp
+                                                            if ((entry.condition === 'tăng huyết áp' || entry.condition === 'THA')) {
+                                                                const validReadings = exam.bpReadings.filter(r => r.systolic && r.diastolic);
+                                                                if (validReadings.length > 0) {
+                                                                    let bpPreview = '';
+                                                                    if (validReadings.length === 1) {
+                                                                        bpPreview = `HA ${validReadings[0].systolic}/${validReadings[0].diastolic} mmHg`;
+                                                                    } else {
+                                                                        bpPreview = validReadings.map((r, i) => `L${i + 1} HA ${r.systolic}/${r.diastolic} mmHg`).join(', ');
+                                                                    }
+                                                                    conditionText += ` (${bpPreview})`;
+                                                                }
+                                                            }
+
+                                                            return conditionText;
                                                         }).filter(Boolean).join(', ')}
                                                     </div>
                                                 )}
