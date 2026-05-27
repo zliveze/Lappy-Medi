@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PatientData, BLOOD_PRESSURE_OPTIONS, INTERNAL_PREFIX_OPTIONS, INTERNAL_CONDITION_OPTIONS, INTERNAL_TIME_UNIT_OPTIONS, INTERNAL_TREATMENT_OPTIONS, EYE_OPTIONS_SINGLE, EYE_OPTIONS_BOTH, ENT_OPTIONS, DENTAL_OPTIONS, LIVER_OPTIONS, KIDNEY_OPTIONS, VISION_OPTIONS, DNT_OPTIONS, ECG_AXIS_OPTIONS, CLASSIFICATION_OPTIONS, ULTRASOUND_ABDOMEN_NOTE_OPTIONS, ULTRASOUND_BREAST_OPTIONS, ULTRASOUND_THYROID_OPTIONS, ULTRASOUND_GYNECOLOGY_OPTIONS, ULTRASOUND_CARDIAC_OPTIONS } from '@/types/patient';
 import { calculateBMI, getPhysiqueFromBMI } from '@/lib/utils';
+import { ToothSelectionDialog } from './ToothSelectionDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -198,6 +199,9 @@ export function PatientEditor({
 
     // === Dirty state tracking (theo dõi trạng thái lưu trong phiên chỉnh sửa) ===
     const [isDirty, setIsDirty] = useState(false);
+    const [isToothDialogOpen, setIsToothDialogOpen] = useState(false);
+    const [toothDialogType, setToothDialogType] = useState<'mất răng' | 'sâu răng'>('sâu răng');
+    const [toothDialogTeeth, setToothDialogTeeth] = useState<number[]>([]);
     const isSettlingRef = useRef(false); // Tránh đánh dấu dirty khi đang load dữ liệu bệnh nhân
 
     // Reset dirty state khi chuyển bệnh nhân
@@ -909,6 +913,63 @@ export function PatientEditor({
         } else {
             setter([...arr, item]);
         }
+    };
+
+    // Parser for teeth numbers in note
+    const parseTeethFromNote = (note: string, type: 'mất răng' | 'sâu răng'): number[] => {
+        if (!note) return [];
+        const regex = new RegExp(`${type}\\s*\\(([^)]*)\\)`, 'i');
+        const match = note.match(regex);
+        if (match && match[1]) {
+            return match[1]
+                .split(',')
+                .map(s => parseInt(s.trim()))
+                .filter(n => !isNaN(n));
+        }
+        return [];
+    };
+
+    // Helper function to check if dental option is selected exactly
+    const isDentalOptionSelected = (note: string, opt: string): boolean => {
+        if (!note || !opt) return false;
+        
+        if (opt === 'sâu răng' || opt === 'mất răng') {
+            const regex = new RegExp(`(^|,\\s*)${opt}(?:\\s*\\([^)]*\\))?(?!\\s*(?:đã|chưa)\\s+điều\\s+trị)(?:\\s*,|\\s*$)`, 'i');
+            return regex.test(note);
+        }
+        
+        return isExactMatchInNote(note, opt);
+    };
+
+    // Formatter to update teeth list in the note
+    const updateNoteWithTeeth = (note: string, type: 'mất răng' | 'sâu răng', selectedTeeth: number[]): string => {
+        const currentNote = note.trim();
+        const sortedTeeth = [...selectedTeeth].sort((a, b) => a - b);
+        const formatted = sortedTeeth.length > 0 ? `${type} (${sortedTeeth.join(', ')})` : type;
+        
+        const regex = new RegExp(`${type}(?:\\s*\\([^)]*\\))?(?!\\s*(?:đã|chưa)\\s+điều\\s+trị)`, 'i');
+        
+        if (regex.test(currentNote)) {
+            return currentNote
+                .replace(regex, formatted)
+                .replace(/,\s*,/g, ',')
+                .replace(/^[\s,]+|[\s,]+$/g, '')
+                .trim();
+        } else {
+            return currentNote ? `${currentNote}, ${formatted}` : formatted;
+        }
+    };
+
+    // Helper to completely remove a dental option from note
+    const removeDentalOptionFromNote = (note: string, type: 'mất răng' | 'sâu răng'): string => {
+        const currentNote = note.trim();
+        const regex = new RegExp(`${type}(?:\\s*\\([^)]*\\))?(?!\\s*(?:đã|chưa)\\s+điều\\s+trị)(?:\\s*,?\\s*)?`, 'gi');
+        
+        return currentNote
+            .replace(regex, '')
+            .replace(/,\s*,/g, ',')
+            .replace(/^[\s,]+|[\s,]+$/g, '')
+            .trim();
     };
 
     // Helper function để kiểm tra exact match trong chuỗi (tránh "độ III" match với "độ I")
@@ -1762,21 +1823,28 @@ export function PatientEditor({
                                                     <Button
                                                         key={opt}
                                                         size="sm"
-                                                        variant={exam.dentalNote.includes(opt) ? 'default' : 'outline'}
+                                                        variant={isDentalOptionSelected(exam.dentalNote, opt) ? 'default' : 'outline'}
                                                         onClick={() => {
-                                                            const currentNote = exam.dentalNote.trim();
-                                                            if (currentNote.includes(opt)) {
-                                                                // Nếu đã có thì xóa đi
-                                                                const newNote = currentNote
-                                                                    .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
-                                                                    .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                    .replace(/,\s*,/g, ',')
-                                                                    .trim();
-                                                                setExam({ ...exam, dentalNote: newNote });
+                                                            if (opt === 'sâu răng' || opt === 'mất răng') {
+                                                                const teeth = parseTeethFromNote(exam.dentalNote, opt);
+                                                                setToothDialogType(opt);
+                                                                setToothDialogTeeth(teeth);
+                                                                setIsToothDialogOpen(true);
                                                             } else {
-                                                                // Nếu chưa có thì cộng thêm
-                                                                const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
-                                                                setExam({ ...exam, dentalNote: newNote });
+                                                                const currentNote = exam.dentalNote.trim();
+                                                                if (isExactMatchInNote(currentNote, opt)) {
+                                                                    // Nếu đã có thì xóa đi
+                                                                    const newNote = currentNote
+                                                                        .replace(new RegExp(opt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                        .replace(/,\s*,/g, ',')
+                                                                        .trim();
+                                                                    setExam({ ...exam, dentalNote: newNote });
+                                                                 } else {
+                                                                     // Nếu chưa có thì cộng thêm
+                                                                     const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                                                     setExam({ ...exam, dentalNote: newNote });
+                                                                 }
                                                             }
                                                         }}
                                                     >
@@ -2607,6 +2675,24 @@ export function PatientEditor({
                     </div>
                 </div>
             )}
+
+            {/* Tooth Selection Dialog */}
+            <ToothSelectionDialog
+                isOpen={isToothDialogOpen}
+                onClose={() => setIsToothDialogOpen(false)}
+                type={toothDialogType}
+                initialTeeth={toothDialogTeeth}
+                onConfirm={(selectedTeeth) => {
+                    const newNote = updateNoteWithTeeth(exam.dentalNote, toothDialogType, selectedTeeth);
+                    setExam({ ...exam, dentalNote: newNote });
+                    setIsToothDialogOpen(false);
+                }}
+                onRemove={() => {
+                    const newNote = removeDentalOptionFromNote(exam.dentalNote, toothDialogType);
+                    setExam({ ...exam, dentalNote: newNote });
+                    setIsToothDialogOpen(false);
+                }}
+            />
         </Dialog>
     );
 }

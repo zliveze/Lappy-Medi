@@ -87,7 +87,13 @@ export const EYE_OPTIONS = [
 export const ENT_OPTIONS = [
   'amidan quá phát',
   'viêm họng hạt',
+  'viêm amidan mạn tính',
   'viêm mũi dị ứng',
+  'u cuốn mũi',
+  'viêm xoang hàm',
+  'polyp mũi',
+  'vẹo vách ngăn',
+  'viêm mũi mạn tính'
 
 ];
 
