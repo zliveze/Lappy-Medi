@@ -15,6 +15,15 @@ const HEADER_ALIASES: Record<string, string> = {
   'TÊN': 'HỌ VÀ TÊN', // Một số file chỉ có cột "Tên"
 };
 
+/**
+ * Normalize header để so sánh (loại bỏ dấu cách thừa, chuyển uppercase, áp dụng alias)
+ */
+export function normalizeHeader(h: string): string {
+  const normalized = h.toUpperCase().trim().replace(/\s+/g, ' ');
+  // Áp dụng alias nếu có
+  return HEADER_ALIASES[normalized] || normalized;
+}
+
 // Thông tin về 1 bảng trong sheet
 export interface TableInfo {
   tableName: string;
@@ -476,12 +485,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
   ) || headers.length <= 6;
   const isSimpleFormat = hasOnlyBasicColumns && headers.length <= 6;
 
-  // Normalize header để so sánh (loại bỏ dấu cách thừa, chuyển uppercase, áp dụng alias)
-  const normalizeHeader = (h: string) => {
-    const normalized = h.toUpperCase().trim().replace(/\s+/g, ' ');
-    // Áp dụng alias nếu có
-    return HEADER_ALIASES[normalized] || normalized;
-  };
+
 
   // Tạo cấu hình cột - sử dụng Set để tránh trùng lặp
   const columnSet = new Set(headers.map(h => normalizeHeader(h)));
@@ -600,10 +604,10 @@ async function exportWithOriginalFormat(
       dataEndRow: worksheet.rowCount,
     }];
 
-  // Tạo mapping từ header sang column index
+  // Tạo mapping từ header sang column index (sử dụng normalizeHeader để hỗ trợ các alias như HỌ TÊN -> HỌ VÀ TÊN)
   const headerToCol = new Map<string, number>();
   columnMapping.forEach((colIndex, header) => {
-    headerToCol.set(header.toUpperCase(), colIndex);
+    headerToCol.set(normalizeHeader(header), colIndex);
   });
 
   // Tìm cột cuối cùng (fallback = 0 nếu không có cột nào)
@@ -613,12 +617,13 @@ async function exportWithOriginalFormat(
   // Thêm các cột mới vào header của TẤT CẢ các bảng
   tables.forEach(table => {
     visibleColumns.forEach(col => {
-      if (!headerToCol.has(col.key.toUpperCase())) {
+      const normalizedKey = normalizeHeader(col.key);
+      if (!headerToCol.has(normalizedKey)) {
         lastCol++;
-        headerToCol.set(col.key.toUpperCase(), lastCol);
+        headerToCol.set(normalizedKey, lastCol);
       }
       // Thêm header cho cột mới vào mỗi bảng
-      const colIdx = headerToCol.get(col.key.toUpperCase());
+      const colIdx = headerToCol.get(normalizedKey);
       if (colIdx) {
         const headerCell = worksheet.getRow(table.headerRow).getCell(colIdx);
         if (!headerCell.value) {
@@ -634,9 +639,9 @@ async function exportWithOriginalFormat(
   });
 
   // Tìm index cột cho công thức BMI và Thể trạng
-  const weightColIdx = headerToCol.get('CÂN NẶNG');
-  const heightColIdx = headerToCol.get('CHIỀU CAO');
-  const bmiColIdx = headerToCol.get('BMI');
+  const weightColIdx = headerToCol.get(normalizeHeader('Cân nặng'));
+  const heightColIdx = headerToCol.get(normalizeHeader('Chiều cao'));
+  const bmiColIdx = headerToCol.get(normalizeHeader('BMI'));
 
   // Chuyển sang ký tự cột Excel
   const weightCol = weightColIdx ? getColumnLetter(weightColIdx - 1) : null;
@@ -685,7 +690,7 @@ async function exportWithOriginalFormat(
       const row = worksheet.getRow(dataRowNum);
 
       visibleColumns.forEach(col => {
-        const colIndex = headerToCol.get(col.key.toUpperCase());
+        const colIndex = headerToCol.get(normalizeHeader(col.key));
         if (colIndex !== undefined && colIndex > 0) {
           try {
             const cell = row.getCell(colIndex);
