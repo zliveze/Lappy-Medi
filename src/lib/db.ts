@@ -4,15 +4,8 @@ import dns from 'dns';
 // Tự động cấu hình DNS để tránh lỗi chặn SRV (ECONNREFUSED querySrv) phổ biến ở nhà mạng Việt Nam (Viettel, VNPT, FPT)
 try {
   dns.setServers(['8.8.8.8', '1.1.1.1']);
-  console.log('Forced Node.js DNS resolver to use Google & Cloudflare DNS.');
 } catch (e) {
-  console.warn('DNS override failed, falling back to default resolver:', e);
-}
-
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  // Bỏ qua nếu không thể override DNS (ví dụ trên Vercel Edge)
 }
 
 /**
@@ -27,6 +20,12 @@ if (!cached) {
 }
 
 async function dbConnect() {
+  // Kiểm tra MONGODB_URI tại runtime (không phải build time) để tránh lỗi Vercel build
+  const MONGODB_URI = process.env.MONGODB_URI;
+  if (!MONGODB_URI) {
+    throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  }
+
   if (cached.conn) {
     return cached.conn;
   }
@@ -36,7 +35,7 @@ async function dbConnect() {
       bufferCommands: false,
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongooseInstance) => {
+    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
       return mongooseInstance;
     });
   }
