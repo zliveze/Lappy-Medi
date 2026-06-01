@@ -41,6 +41,18 @@ export interface OriginalFileInfo {
   columnMapping: Map<string, number>; // header -> column index (1-based)
   fileName: string; // Tên file gốc
   tables: TableInfo[]; // Thông tin về các bảng trong sheet
+  fileBufferBase64?: string; // Cache base64 gốc để lưu lên MongoDB
+}
+
+// Chuyển ArrayBuffer thành chuỗi Base64 chạy trên trình duyệt
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
 }
 
 let originalFileInfo: OriginalFileInfo | null = null;
@@ -210,6 +222,7 @@ export interface ImportResult {
   fileName: string;
   isSimpleFormat: boolean;
   tables?: TableGroup[];  // Nhiều bảng nếu có
+  fileBufferBase64?: string;
 }
 
 /**
@@ -291,6 +304,7 @@ function findHeaderRowExcel(worksheet: ExcelJS.Worksheet): number {
  */
 export async function importExcel(file: File): Promise<ImportResult> {
   const arrayBuffer = await file.arrayBuffer();
+  const fileBufferBase64 = arrayBufferToBase64(arrayBuffer);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(arrayBuffer);
 
@@ -459,6 +473,7 @@ export async function importExcel(file: File): Promise<ImportResult> {
     columnMapping,
     fileName: file.name,
     tables: tableInfos,
+    fileBufferBase64
   };
 
   // Lưu workbook vào IndexedDB để có thể khôi phục sau refresh
@@ -537,7 +552,79 @@ export async function importExcel(file: File): Promise<ImportResult> {
     fileName: file.name,
     isSimpleFormat,
     tables: hasMultipleTables ? tableGroups : undefined,
+    fileBufferBase64,
   };
+}
+
+/**
+ * Phục hồi workbook gốc từ chuỗi Base64 (dùng khi đổi máy mới, lấy file từ MongoDB về)
+ */
+export async function loadOriginalWorkbookFromBase64(
+  base64: string,
+  fileName: string
+): Promise<boolean> {
+  try {
+    const binaryString = window.atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const arrayBuffer = bytes.buffer;
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(arrayBuffer);
+
+    // Chọn sheet: ưu tiên "DS", nếu không có thì lấy sheet đầu tiên
+    let worksheet = workbook.worksheets.find(
+      ws => ws.name.toUpperCase() === PREFERRED_SHEET_NAME.toUpperCase()
+    );
+    if (!worksheet) {
+      worksheet = workbook.worksheets[0];
+    }
+
+    const sheetName = worksheet.name;
+    const allTables = findAllTables(worksheet);
+    const headerRow = allTables[0].headerRow;
+
+    const headerRowData = worksheet.getRow(headerRow);
+    const headers: string[] = [];
+    const columnMapping = new Map<string, number>();
+
+    headerRowData.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      const headerName = String(cell.value || '').trim();
+      if (headerName) {
+        headers.push(headerName);
+        columnMapping.set(headerName, colNumber);
+      }
+    });
+
+    const tableInfos: TableInfo[] = allTables.map((table, idx) => {
+      const nextTable = allTables[idx + 1];
+      return {
+        tableName: table.tableName,
+        headerRow: table.headerRow,
+        dataStartRow: table.headerRow + 1,
+        dataEndRow: nextTable ? nextTable.headerRow - 1 : worksheet.rowCount,
+      };
+    });
+
+    originalFileInfo = {
+      workbook,
+      sheetName,
+      headerRow,
+      originalHeaders: headers,
+      columnMapping,
+      fileName,
+      tables: tableInfos,
+      fileBufferBase64: base64
+    };
+
+    console.log('Restored original workbook from Base64 buffer:', fileName);
+    return true;
+  } catch (error) {
+    console.error('Error loading original workbook from Base64:', error);
+    return false;
+  }
 }
 
 /**

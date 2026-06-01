@@ -1,5 +1,8 @@
 export interface PatientData {
   [key: string]: string | number | undefined;
+  _id?: string;
+  orderIndex?: number;
+  _tableName?: string;
   CODE?: string;
   'HỌ VÀ TÊN'?: string;
   NS?: string;
