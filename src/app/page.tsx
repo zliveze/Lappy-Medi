@@ -51,8 +51,8 @@ export default function Home() {
   const columnSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Debounce ref for reorder API call
   const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Adaptive poll interval: 30s default, drops to 10s after detecting changes
-  const pollIntervalRef = useRef<number>(30000);
+  // Adaptive poll interval: 3s khi có thay đổi, 5s khi idle
+  const pollIntervalRef = useRef<number>(3000);
 
   // Keys
   const CLIPBOARD_KEY = 'mediexcel_clipboard';
@@ -76,7 +76,7 @@ export default function Home() {
   }, []);
 
   // Smart Polling: Theo dõi trạng thái tab (visible/hidden)
-  // Khi tab ẩn → dừng poll. Khi tab hiện lại → poll ngay lập tức.
+  // Polling effect sẽ tự xử lý immediate poll khi tab quay lại
   useEffect(() => {
     const handleVisibility = () => {
       isTabVisibleRef.current = !document.hidden;
@@ -161,7 +161,8 @@ export default function Home() {
           await loadOriginalWorkbookFromBase64(workbook.fileBufferBase64, workbook.fileName);
         }
 
-        lastSyncedAtRef.current = new Date().toISOString(); // seed với server time thực tế (serverTime từ sync endpoint sẽ ghi đè)
+        // Dùng server timestamp (workbook.updatedAt) làm seed — tránh lệch clock client/server
+        lastSyncedAtRef.current = workbook.updatedAt || new Date().toISOString();
         setLastSaved(new Date(workbook.updatedAt));
         setSyncStatus('connected');
         showToast(`📦 Đã tải file "${workbook.fileName}" từ Cloud!`);
@@ -209,47 +210,46 @@ export default function Home() {
   const setPatientsRef = useRef(setPatients);
   const setSyncStatusRef = useRef(setSyncStatus);
 
-  // Smart Polling: Adaptive backoff — 30s bình thường, 10s sau khi có thay đổi
-  // Tắt hoàn toàn khi tab ẩn hoặc đang mở editor
-  // FIX: Dùng lastSyncedAtRef thay vì state → effect KHÔNG restart sau mỗi poll
+  // Ref để workbookId có thể đọc từ trong callback mà không cần dependency
+  const currentWorkbookIdRef = useRef(currentWorkbookId);
+  useEffect(() => { currentWorkbookIdRef.current = currentWorkbookId; }, [currentWorkbookId]);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // REAL-TIME SYNC: Fast polling 3s + immediate poll khi tab quay lại
+  // Vercel không hỗ trợ WebSocket → polling là cách duy nhất.
+  // Tối ưu: 3s active, 5s editor mở, dừng hoàn toàn khi tab ẩn.
+  // ═══════════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!currentWorkbookId) return;
 
-    // Reset timestamp khi đổi workbook — tránh dùng timestamp cũ của workbook trước
+    // Reset timestamp khi đổi workbook
     lastSyncedAtRef.current = null;
 
     let timeoutId: ReturnType<typeof setTimeout>;
     let stopped = false;
+    let isPolling = false; // guard chống gọi trùng
 
-    // Chờ loadWorkbook() set lastSyncedAtRef.current, rồi bắt đầu poll ngay
-    const waitAndPoll = () => {
-      if (stopped) return;
-      if (!lastSyncedAtRef.current) {
-        // Chưa có seed timestamp → thử lại sau 300ms (không gọi API)
-        timeoutId = setTimeout(waitAndPoll, 300);
-        return;
-      }
-      // Có timestamp rồi → bắt đầu vòng poll sau delay đầu tiên
-      timeoutId = setTimeout(doPoll, pollIntervalRef.current);
-    };
-
+    // ── Core poll function ──────────────────────────────────────────────
     const doPoll = async () => {
-      if (stopped) return;
+      if (stopped || isPolling) return;
 
-      // KHÔNG poll khi: tab ẩn HOẶC đang mở editor — tiết kiệm tài nguyên Vercel
-      if (!isTabVisibleRef.current || isEditorOpenRef.current) {
-        timeoutId = setTimeout(doPoll, 5000);
-        return;
-      }
+      // Tab ẩn → dừng hoàn toàn, không gọi API, chờ visibilitychange
+      if (!isTabVisibleRef.current) return;
 
       const since = lastSyncedAtRef.current;
       if (!since) {
-        timeoutId = setTimeout(waitAndPoll, 300);
+        // Chưa có seed → chờ loadWorkbook hoàn thành
+        timeoutId = setTimeout(doPoll, 200);
         return;
       }
 
+      isPolling = true;
       try {
-        const res = await fetch(`/api/workbooks/${currentWorkbookId}/sync?since=${encodeURIComponent(since)}`);
+        const res = await fetch(
+          `/api/workbooks/${currentWorkbookId}/sync?since=${encodeURIComponent(since)}`
+        );
+        if (stopped) return;
+
         if (res.ok) {
           const { serverTime, updatedPatients } = await res.json();
           let hadChanges = false;
@@ -259,57 +259,78 @@ export default function Home() {
             setPatientsRef.current(prev => {
               const prevMap = new Map(prev.map((p: any) => [p._id, p]));
               let nextPatients = [...prev];
-              let hasChanges = false;
+              let changed = false;
 
               updatedPatients.forEach((up: any) => {
                 if (up.isDeleted) {
                   if (prevMap.has(up._id)) {
                     nextPatients = nextPatients.filter((p: any) => p._id !== up._id);
-                    hasChanges = true;
+                    changed = true;
                   }
                 } else if (prevMap.has(up._id)) {
                   nextPatients = nextPatients.map((p: any) => p._id === up._id ? up : p);
-                  hasChanges = true;
+                  changed = true;
                 } else {
                   nextPatients.push(up);
-                  hasChanges = true;
+                  changed = true;
                 }
               });
 
-              if (hasChanges) {
+              if (changed) {
                 nextPatients.sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+                // Cập nhật LS cache với dữ liệu mới nhất
+                const wbId = currentWorkbookIdRef.current;
+                if (wbId) {
+                  try { localStorage.setItem(`mediexcel_patients_${wbId}`, JSON.stringify(nextPatients)); } catch {}
+                }
                 return nextPatients;
               }
               return prev;
             });
           }
 
-          // Luôn dùng serverTime (từ server) làm cursor — tránh lệch clock client/server
+          // Luôn dùng serverTime làm cursor
           lastSyncedAtRef.current = serverTime;
           setSyncStatusRef.current('connected');
 
-          // Adaptive backoff: có thay đổi → poll nhanh hơn (10s), không thay đổi → 30s
-          pollIntervalRef.current = hadChanges ? 10000 : 30000;
+          // Adaptive: có thay đổi → 3s (nhanh nhất), idle → 5s
+          pollIntervalRef.current = hadChanges ? 3000 : 5000;
         } else {
           setSyncStatusRef.current('offline');
-          pollIntervalRef.current = 30000;
+          pollIntervalRef.current = 10000; // offline → 10s retry
         }
       } catch (e) {
-        console.error('Sync error:', e);
+        console.error('Sync poll error:', e);
         setSyncStatusRef.current('offline');
-        pollIntervalRef.current = 30000;
+        pollIntervalRef.current = 10000;
+      } finally {
+        isPolling = false;
       }
 
+      // Schedule next poll
       if (!stopped) {
         timeoutId = setTimeout(doPoll, pollIntervalRef.current);
       }
     };
 
-    waitAndPoll();
+    // ── Immediate poll khi tab quay lại focus ────────────────────────────
+    const handleVisibilityForPoll = () => {
+      if (!document.hidden && !stopped && lastSyncedAtRef.current) {
+        // Tab vừa quay lại → hủy timeout hiện tại, poll ngay lập tức
+        clearTimeout(timeoutId);
+        doPoll();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityForPoll);
+
+    // ── Start ───────────────────────────────────────────────────────────
+    // Bắt đầu vòng poll (sẽ tự chờ nếu chưa có seed timestamp)
+    timeoutId = setTimeout(doPoll, 500);
 
     return () => {
       stopped = true;
       clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', handleVisibilityForPoll);
     };
   }, [currentWorkbookId]);
 
