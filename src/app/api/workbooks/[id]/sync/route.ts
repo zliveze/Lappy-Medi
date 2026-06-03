@@ -17,21 +17,24 @@ export async function GET(
     }
 
     const sinceDate = new Date(sinceParam);
+    if (isNaN(sinceDate.getTime())) {
+      return NextResponse.json({ error: 'Invalid since date' }, { status: 400 });
+    }
+
+    // serverTime được tính TRƯỚC khi query để tránh race condition:
+    // nếu có update xảy ra trong lúc query chạy, nó sẽ được bắt ở lần poll tiếp theo
     const serverTime = new Date().toISOString();
 
-    // Chỉ cần 1 query Patient — bỏ Workbook.exists() không cần thiết
-    // Nếu workbookId không tồn tại, query trả về mảng rỗng — hoàn toàn hợp lệ
+    // Trả về cả bệnh nhân isDeleted=true để máy kia biết mà xóa (soft-delete sync)
     const updatedPatients = await Patient.find(
       { workbookId: id, updatedAt: { $gt: sinceDate } },
-      // Projection: chỉ lấy các trường cần thiết, bỏ fileBufferBase64 không có trong Patient
     ).sort({ orderIndex: 1 }).lean();
 
     return NextResponse.json(
       { serverTime, updatedPatients },
       {
         headers: {
-          // Không cache response này ở CDN — luôn cần dữ liệu tươi
-          'Cache-Control': 'no-store',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
         },
       }
     );

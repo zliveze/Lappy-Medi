@@ -74,15 +74,19 @@ export async function DELETE(
     await dbConnect();
     const { id } = params;
 
-    // Hard-delete: 1 query thay vì findById + save (2 queries)
-    // Giảm kích thước collection, query nhanh hơn, index gọn hơn
-    const result = await Patient.findByIdAndDelete(id);
+    // Soft-delete: đánh dấu isDeleted=true thay vì xóa thật
+    // → Sync endpoint có thể phát hiện và báo các máy khác xóa bệnh nhân tương ứng
+    const result = await Patient.findByIdAndUpdate(
+      id,
+      { $set: { isDeleted: true } },
+      { new: true }
+    );
 
     if (!result) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, message: 'Patient deleted' });
+    return NextResponse.json({ success: true, message: 'Patient soft-deleted' });
   } catch (error: any) {
     console.error('Error deleting patient:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -161,7 +161,7 @@ export default function Home() {
           await loadOriginalWorkbookFromBase64(workbook.fileBufferBase64, workbook.fileName);
         }
 
-        lastSyncedAtRef.current = new Date().toISOString();
+        lastSyncedAtRef.current = new Date().toISOString(); // seed với server time thực tế (serverTime từ sync endpoint sẽ ghi đè)
         setLastSaved(new Date(workbook.updatedAt));
         setSyncStatus('connected');
         showToast(`📦 Đã tải file "${workbook.fileName}" từ Cloud!`);
@@ -215,20 +215,23 @@ export default function Home() {
   useEffect(() => {
     if (!currentWorkbookId) return;
 
-    // Đợi cho đến khi có lastSyncedAt từ lần load đầu tiên
-    const waitForInit = setInterval(() => {
-      if (lastSyncedAtRef.current) {
-        clearInterval(waitForInit);
-        startPolling();
-      }
-    }, 500);
+    // Reset timestamp khi đổi workbook — tránh dùng timestamp cũ của workbook trước
+    lastSyncedAtRef.current = null;
 
     let timeoutId: ReturnType<typeof setTimeout>;
     let stopped = false;
 
-    function startPolling() {
+    // Chờ loadWorkbook() set lastSyncedAtRef.current, rồi bắt đầu poll ngay
+    const waitAndPoll = () => {
+      if (stopped) return;
+      if (!lastSyncedAtRef.current) {
+        // Chưa có seed timestamp → thử lại sau 300ms (không gọi API)
+        timeoutId = setTimeout(waitAndPoll, 300);
+        return;
+      }
+      // Có timestamp rồi → bắt đầu vòng poll sau delay đầu tiên
       timeoutId = setTimeout(doPoll, pollIntervalRef.current);
-    }
+    };
 
     const doPoll = async () => {
       if (stopped) return;
@@ -241,12 +244,12 @@ export default function Home() {
 
       const since = lastSyncedAtRef.current;
       if (!since) {
-        timeoutId = setTimeout(doPoll, pollIntervalRef.current);
+        timeoutId = setTimeout(waitAndPoll, 300);
         return;
       }
 
       try {
-        const res = await fetch(`/api/workbooks/${currentWorkbookId}/sync?since=${since}`);
+        const res = await fetch(`/api/workbooks/${currentWorkbookId}/sync?since=${encodeURIComponent(since)}`);
         if (res.ok) {
           const { serverTime, updatedPatients } = await res.json();
           let hadChanges = false;
@@ -281,7 +284,7 @@ export default function Home() {
             });
           }
 
-          // Cập nhật ref trực tiếp — KHÔNG dùng setState để tránh re-trigger effect
+          // Luôn dùng serverTime (từ server) làm cursor — tránh lệch clock client/server
           lastSyncedAtRef.current = serverTime;
           setSyncStatusRef.current('connected');
 
@@ -302,9 +305,10 @@ export default function Home() {
       }
     };
 
+    waitAndPoll();
+
     return () => {
       stopped = true;
-      clearInterval(waitForInit);
       clearTimeout(timeoutId);
     };
   }, [currentWorkbookId]);
