@@ -28,7 +28,9 @@ export default function Home() {
   const [workbooks, setWorkbooks] = useState<any[]>([]);
   const [currentWorkbookId, setCurrentWorkbookId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('connected');
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  // lastSyncedAt dùng ref thay vì state để tránh useEffect polling bị restart
+  // sau mỗi lần poll thành công (setLastSyncedAt cũ gây cleanup/re-subscribe liên tục)
+  const lastSyncedAtRef = useRef<string | null>(null);
 
   // Clipboard state for copy/paste patient data
   const [copiedPatientData, setCopiedPatientData] = useState<PatientData | null>(null);
@@ -159,7 +161,7 @@ export default function Home() {
           await loadOriginalWorkbookFromBase64(workbook.fileBufferBase64, workbook.fileName);
         }
 
-        setLastSyncedAt(new Date().toISOString());
+        lastSyncedAtRef.current = new Date().toISOString();
         setLastSaved(new Date(workbook.updatedAt));
         setSyncStatus('connected');
         showToast(`📦 Đã tải file "${workbook.fileName}" từ Cloud!`);
@@ -199,42 +201,71 @@ export default function Home() {
     initData();
   }, [fetchWorkbooks, loadWorkbook]);
 
+  // Ref để trỏ tới isEditorOpen mới nhất mà không trigger re-subscribe effect
+  const isEditorOpenRef = useRef(isEditorOpen);
+  useEffect(() => { isEditorOpenRef.current = isEditorOpen; }, [isEditorOpen]);
+
+  // Ref để trỏ tới setPatients/setSyncStatus mới nhất (stable refs)
+  const setPatientsRef = useRef(setPatients);
+  const setSyncStatusRef = useRef(setSyncStatus);
+
   // Smart Polling: Adaptive backoff — 30s bình thường, 10s sau khi có thay đổi
   // Tắt hoàn toàn khi tab ẩn hoặc đang mở editor
+  // FIX: Dùng lastSyncedAtRef thay vì state → effect KHÔNG restart sau mỗi poll
   useEffect(() => {
-    if (!currentWorkbookId || !lastSyncedAt) return;
+    if (!currentWorkbookId) return;
+
+    // Đợi cho đến khi có lastSyncedAt từ lần load đầu tiên
+    const waitForInit = setInterval(() => {
+      if (lastSyncedAtRef.current) {
+        clearInterval(waitForInit);
+        startPolling();
+      }
+    }, 500);
 
     let timeoutId: ReturnType<typeof setTimeout>;
+    let stopped = false;
+
+    function startPolling() {
+      timeoutId = setTimeout(doPoll, pollIntervalRef.current);
+    }
 
     const doPoll = async () => {
-      // KHÔNG poll khi: tab ẩn HOẶC đang mở editor
-      if (!isTabVisibleRef.current || isEditorOpen) {
-        // Kiểm tra lại sau 5s mà không gọi API
+      if (stopped) return;
+
+      // KHÔNG poll khi: tab ẩn HOẶC đang mở editor — tiết kiệm tài nguyên Vercel
+      if (!isTabVisibleRef.current || isEditorOpenRef.current) {
         timeoutId = setTimeout(doPoll, 5000);
         return;
       }
 
+      const since = lastSyncedAtRef.current;
+      if (!since) {
+        timeoutId = setTimeout(doPoll, pollIntervalRef.current);
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/workbooks/${currentWorkbookId}/sync?since=${lastSyncedAt}`);
+        const res = await fetch(`/api/workbooks/${currentWorkbookId}/sync?since=${since}`);
         if (res.ok) {
           const { serverTime, updatedPatients } = await res.json();
           let hadChanges = false;
 
           if (updatedPatients && updatedPatients.length > 0) {
             hadChanges = true;
-            setPatients(prev => {
-              const prevMap = new Map(prev.map(p => [p._id, p]));
+            setPatientsRef.current(prev => {
+              const prevMap = new Map(prev.map((p: any) => [p._id, p]));
               let nextPatients = [...prev];
               let hasChanges = false;
 
               updatedPatients.forEach((up: any) => {
                 if (up.isDeleted) {
                   if (prevMap.has(up._id)) {
-                    nextPatients = nextPatients.filter(p => p._id !== up._id);
+                    nextPatients = nextPatients.filter((p: any) => p._id !== up._id);
                     hasChanges = true;
                   }
                 } else if (prevMap.has(up._id)) {
-                  nextPatients = nextPatients.map(p => p._id === up._id ? up : p);
+                  nextPatients = nextPatients.map((p: any) => p._id === up._id ? up : p);
                   hasChanges = true;
                 } else {
                   nextPatients.push(up);
@@ -243,36 +274,40 @@ export default function Home() {
               });
 
               if (hasChanges) {
-                nextPatients.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+                nextPatients.sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
                 return nextPatients;
               }
               return prev;
             });
           }
 
-          setLastSyncedAt(serverTime);
-          setSyncStatus('connected');
+          // Cập nhật ref trực tiếp — KHÔNG dùng setState để tránh re-trigger effect
+          lastSyncedAtRef.current = serverTime;
+          setSyncStatusRef.current('connected');
 
           // Adaptive backoff: có thay đổi → poll nhanh hơn (10s), không thay đổi → 30s
           pollIntervalRef.current = hadChanges ? 10000 : 30000;
         } else {
-          setSyncStatus('offline');
-          pollIntervalRef.current = 30000; // Offline → giảm tần suất
+          setSyncStatusRef.current('offline');
+          pollIntervalRef.current = 30000;
         }
       } catch (e) {
         console.error('Sync error:', e);
-        setSyncStatus('offline');
+        setSyncStatusRef.current('offline');
         pollIntervalRef.current = 30000;
       }
 
-      timeoutId = setTimeout(doPoll, pollIntervalRef.current);
+      if (!stopped) {
+        timeoutId = setTimeout(doPoll, pollIntervalRef.current);
+      }
     };
 
-    // Bắt đầu poll sau 30s đầu tiên (dữ liệu mới load xong rồi)
-    timeoutId = setTimeout(doPoll, pollIntervalRef.current);
-
-    return () => clearTimeout(timeoutId);
-  }, [currentWorkbookId, lastSyncedAt, isEditorOpen]);
+    return () => {
+      stopped = true;
+      clearInterval(waitForInit);
+      clearTimeout(timeoutId);
+    };
+  }, [currentWorkbookId]);
 
   // Xóa toàn bộ dữ liệu file hiện tại — yêu cầu mật khẩu
   const handleClearAutoSave = useCallback(() => {
