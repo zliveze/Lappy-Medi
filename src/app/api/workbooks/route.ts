@@ -7,8 +7,16 @@ export async function GET() {
   try {
     await dbConnect();
     const workbooks = await Workbook.find({}, { fileBufferBase64: 0, columns: 0 })
-      .sort({ updatedAt: -1 });
-    return NextResponse.json(workbooks);
+      .sort({ updatedAt: -1 })
+      .lean();  // Plain JS objects — bỏ Mongoose hydration overhead
+
+    return NextResponse.json(workbooks, {
+      headers: {
+        // Vercel Edge cache giữ 10s → request trùng trong 10s không vào DB
+        // stale-while-revalidate=30 cho phép serve cache cũ trong khi làm mới nền
+        'Cache-Control': 's-maxage=10, stale-while-revalidate=30',
+      },
+    });
   } catch (error: any) {
     console.error('Error fetching workbooks:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -33,7 +41,7 @@ export async function POST(request: Request) {
       columns
     });
 
-    // 2. Create patient documents with orderIndex
+    // 2. Create patient documents with orderIndex — dùng insertMany để tối ưu 1 round-trip
     if (patients && Array.isArray(patients) && patients.length > 0) {
       const patientDocs = patients.map((patient: any, index: number) => {
         // Clean patient data to avoid _id or mongo fields conflict
@@ -54,7 +62,7 @@ export async function POST(request: Request) {
         };
       });
 
-      await Patient.insertMany(patientDocs);
+      await Patient.insertMany(patientDocs, { ordered: false });
     }
 
     return NextResponse.json({

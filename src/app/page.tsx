@@ -37,11 +37,26 @@ export default function Home() {
   const [batchXrayMode, setBatchXrayMode] = useState(false);
   const [selectedForBatchXray, setSelectedForBatchXray] = useState<number[]>([]);
 
+  // Delete password dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletePasswordError, setDeletePasswordError] = useState(false);
+
   // Smart Polling: chỉ poll khi tab đang hiển thị
   const isTabVisibleRef = useRef(true);
 
+  // Debounce ref for column cloud-sync
+  const columnSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce ref for reorder API call
+  const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Adaptive poll interval: 30s default, drops to 10s after detecting changes
+  const pollIntervalRef = useRef<number>(30000);
+
   // Keys
   const CLIPBOARD_KEY = 'mediexcel_clipboard';
+  const COLUMNS_KEY = (id: string) => `mediexcel_columns_${id}`;
+  const PATIENTS_CACHE_KEY = (id: string) => `mediexcel_patients_${id}`;
+  const WORKBOOK_META_KEY = (id: string) => `mediexcel_meta_${id}`;
 
   // Show toast notification - sử dụng sonner
   const showToast = useCallback((message: string) => {
@@ -86,39 +101,75 @@ export default function Home() {
     }
   }, []);
 
-  // Load specific workbook by ID from MongoDB
+  // Load specific workbook by ID — LocalStorage first, then cloud refresh
   const loadWorkbook = useCallback(async (id: string) => {
+    // === PHASE 1: Instant load from LocalStorage cache ===
+    try {
+      const cachedPatients = localStorage.getItem(PATIENTS_CACHE_KEY(id));
+      const cachedMeta = localStorage.getItem(WORKBOOK_META_KEY(id));
+      const cachedColumns = localStorage.getItem(COLUMNS_KEY(id));
+
+      if (cachedPatients && cachedMeta) {
+        const meta = JSON.parse(cachedMeta);
+        const patients = JSON.parse(cachedPatients);
+        const cols = cachedColumns ? JSON.parse(cachedColumns) : (meta.columns || STANDARD_COLUMNS);
+
+        setPatients(patients);
+        setColumns(cols);
+        setFileName(meta.fileName);
+        setIsSimpleFormat(meta.isSimpleFormat || false);
+        setCurrentWorkbookId(id);
+        localStorage.setItem('mediexcel_current_workbook_id', id);
+        setLastSaved(meta.updatedAt ? new Date(meta.updatedAt) : null);
+        // Show cached data immediately — cloud refresh happens below in background
+      }
+    } catch (e) {
+      console.error('Error reading LS cache:', e);
+    }
+
+    // === PHASE 2: Background cloud refresh ===
     try {
       setSyncStatus('syncing');
       const res = await fetch(`/api/workbooks/${id}`);
       if (res.ok) {
         const { workbook, patients: loadedPatients } = await res.json();
+
+        // User's saved column preferences override cloud columns
+        const cachedColumns = localStorage.getItem(COLUMNS_KEY(id));
+        const colsToUse = cachedColumns ? JSON.parse(cachedColumns) : (workbook.columns || STANDARD_COLUMNS);
+
         setPatients(loadedPatients);
-        setColumns(workbook.columns || STANDARD_COLUMNS);
+        setColumns(colsToUse);
         setFileName(workbook.fileName);
         setIsSimpleFormat(workbook.isSimpleFormat || false);
         setCurrentWorkbookId(id);
         localStorage.setItem('mediexcel_current_workbook_id', id);
 
-        // Phục hồi workbook gốc trong bộ nhớ từ base64
+        // Update LS cache with fresh cloud data
+        localStorage.setItem(PATIENTS_CACHE_KEY(id), JSON.stringify(loadedPatients));
+        localStorage.setItem(WORKBOOK_META_KEY(id), JSON.stringify({
+          fileName: workbook.fileName,
+          isSimpleFormat: workbook.isSimpleFormat,
+          columns: workbook.columns,
+          updatedAt: workbook.updatedAt,
+        }));
+
+        // Restore original workbook buffer
         if (workbook.fileBufferBase64) {
           await loadOriginalWorkbookFromBase64(workbook.fileBufferBase64, workbook.fileName);
-          showToast(`📦 Đã tải file "${workbook.fileName}" từ Cloud!`);
-        } else {
-          showToast(`📦 Đã tải dữ liệu file "${workbook.fileName}"!`);
         }
 
-        // Đặt mốc thời gian đồng bộ ban đầu và cập nhật giao diện
         setLastSyncedAt(new Date().toISOString());
         setLastSaved(new Date(workbook.updatedAt));
         setSyncStatus('connected');
+        showToast(`📦 Đã tải file "${workbook.fileName}" từ Cloud!`);
       } else {
         showToast('❌ Lỗi không thể tải file từ database');
         setSyncStatus('offline');
       }
     } catch (e) {
       console.error('Error loading workbook:', e);
-      showToast('❌ Mất kết nối - Không thể tải dữ liệu');
+      showToast('❌ Mất kết nối - Đang dùng dữ liệu đã lưu tạm');
       setSyncStatus('offline');
     }
   }, [showToast]);
@@ -148,22 +199,29 @@ export default function Home() {
     initData();
   }, [fetchWorkbooks, loadWorkbook]);
 
-  // Smart Polling: Đồng bộ nhẹ nhàng chỉ khi tab đang hiển thị
-  // Tự động tạm dừng khi người dùng chuyển tab → tiết kiệm tài nguyên tối đa
+  // Smart Polling: Adaptive backoff — 30s bình thường, 10s sau khi có thay đổi
+  // Tắt hoàn toàn khi tab ẩn hoặc đang mở editor
   useEffect(() => {
     if (!currentWorkbookId || !lastSyncedAt) return;
 
-    const POLL_INTERVAL = 5000; // 5 giây - cân bằng giữa tốc độ đồng bộ và tài nguyên
+    let timeoutId: ReturnType<typeof setTimeout>;
 
-    const interval = setInterval(async () => {
-      // KHÔNG poll khi: tab ẩn HOẶC đang mở editor (tránh conflict khi đang nhập liệu)
-      if (!isTabVisibleRef.current || isEditorOpen) return;
+    const doPoll = async () => {
+      // KHÔNG poll khi: tab ẩn HOẶC đang mở editor
+      if (!isTabVisibleRef.current || isEditorOpen) {
+        // Kiểm tra lại sau 5s mà không gọi API
+        timeoutId = setTimeout(doPoll, 5000);
+        return;
+      }
 
       try {
         const res = await fetch(`/api/workbooks/${currentWorkbookId}/sync?since=${lastSyncedAt}`);
         if (res.ok) {
           const { serverTime, updatedPatients } = await res.json();
+          let hadChanges = false;
+
           if (updatedPatients && updatedPatients.length > 0) {
+            hadChanges = true;
             setPatients(prev => {
               const prevMap = new Map(prev.map(p => [p._id, p]));
               let nextPatients = [...prev];
@@ -171,17 +229,14 @@ export default function Home() {
 
               updatedPatients.forEach((up: any) => {
                 if (up.isDeleted) {
-                  // Xóa bệnh nhân đã bị xóa bởi người khác
                   if (prevMap.has(up._id)) {
                     nextPatients = nextPatients.filter(p => p._id !== up._id);
                     hasChanges = true;
                   }
                 } else if (prevMap.has(up._id)) {
-                  // Cập nhật bệnh nhân đã tồn tại
                   nextPatients = nextPatients.map(p => p._id === up._id ? up : p);
                   hasChanges = true;
                 } else {
-                  // Bệnh nhân mới từ người khác
                   nextPatients.push(up);
                   hasChanges = true;
                 }
@@ -194,47 +249,74 @@ export default function Home() {
               return prev;
             });
           }
+
           setLastSyncedAt(serverTime);
           setSyncStatus('connected');
+
+          // Adaptive backoff: có thay đổi → poll nhanh hơn (10s), không thay đổi → 30s
+          pollIntervalRef.current = hadChanges ? 10000 : 30000;
         } else {
           setSyncStatus('offline');
+          pollIntervalRef.current = 30000; // Offline → giảm tần suất
         }
       } catch (e) {
         console.error('Sync error:', e);
         setSyncStatus('offline');
+        pollIntervalRef.current = 30000;
       }
-    }, POLL_INTERVAL);
 
-    return () => clearInterval(interval);
+      timeoutId = setTimeout(doPoll, pollIntervalRef.current);
+    };
+
+    // Bắt đầu poll sau 30s đầu tiên (dữ liệu mới load xong rồi)
+    timeoutId = setTimeout(doPoll, pollIntervalRef.current);
+
+    return () => clearTimeout(timeoutId);
   }, [currentWorkbookId, lastSyncedAt, isEditorOpen]);
 
-  // Xóa toàn bộ dữ liệu file hiện tại
-  const handleClearAutoSave = useCallback(async () => {
+  // Xóa toàn bộ dữ liệu file hiện tại — yêu cầu mật khẩu
+  const handleClearAutoSave = useCallback(() => {
     if (!currentWorkbookId) return;
-    if (confirm('Xóa file Excel này khỏi Cloud? Hành động này sẽ xóa vĩnh viễn dữ liệu file và bệnh nhân.')) {
-      try {
-        setSyncStatus('syncing');
-        const res = await fetch(`/api/workbooks/${currentWorkbookId}`, { method: 'DELETE' });
-        if (res.ok) {
-          setPatients([]);
-          setColumns(STANDARD_COLUMNS);
-          setFileName('');
-          setCurrentWorkbookId(null);
-          localStorage.removeItem('mediexcel_current_workbook_id');
-          await resetOriginalFileInfo();
-          await fetchWorkbooks();
-          setSyncStatus('connected');
-          showToast('🗑️ Đã xóa file khỏi database!');
-        } else {
-          showToast('❌ Lỗi khi xóa file');
-        }
-      } catch (e) {
-        console.error(e);
-        showToast('❌ Mất kết nối');
-        setSyncStatus('offline');
-      }
+    setDeletePassword('');
+    setDeletePasswordError(false);
+    setShowDeleteDialog(true);
+  }, [currentWorkbookId]);
+
+  const confirmDeleteWithPassword = useCallback(async () => {
+    const CORRECT_PASSWORD = '01678898707Abc!';
+    if (deletePassword !== CORRECT_PASSWORD) {
+      setDeletePasswordError(true);
+      return;
     }
-  }, [currentWorkbookId, fetchWorkbooks, showToast]);
+    setShowDeleteDialog(false);
+
+    if (!currentWorkbookId) return;
+    try {
+      setSyncStatus('syncing');
+      const res = await fetch(`/api/workbooks/${currentWorkbookId}`, { method: 'DELETE' });
+      if (res.ok) {
+        // Clear LS cache for this workbook
+        localStorage.removeItem(PATIENTS_CACHE_KEY(currentWorkbookId));
+        localStorage.removeItem(WORKBOOK_META_KEY(currentWorkbookId));
+        localStorage.removeItem(COLUMNS_KEY(currentWorkbookId));
+        setPatients([]);
+        setColumns(STANDARD_COLUMNS);
+        setFileName('');
+        setCurrentWorkbookId(null);
+        localStorage.removeItem('mediexcel_current_workbook_id');
+        await resetOriginalFileInfo();
+        await fetchWorkbooks();
+        setSyncStatus('connected');
+        showToast('🗑️ Đã xóa file khỏi database!');
+      } else {
+        showToast('❌ Lỗi khi xóa file');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Mất kết nối');
+      setSyncStatus('offline');
+    }
+  }, [currentWorkbookId, deletePassword, fetchWorkbooks, showToast]);
 
   // Keyboard shortcut Ctrl+S để làm mới / đồng bộ thủ công
   useEffect(() => {
@@ -334,12 +416,32 @@ export default function Home() {
     }
   }, [patients, columns, fileName, currentWorkbookId, showToast]);
 
+  // Persist column changes: LS immediately, cloud debounced
+  const saveColumnsToStorage = useCallback((newColumns: ColumnConfig[], workbookId: string | null) => {
+    if (!workbookId) return;
+    // Instant LS save
+    localStorage.setItem(COLUMNS_KEY(workbookId), JSON.stringify(newColumns));
+    // Debounced cloud sync (1.5s after last change)
+    if (columnSyncTimerRef.current) clearTimeout(columnSyncTimerRef.current);
+    columnSyncTimerRef.current = setTimeout(() => {
+      fetch(`/api/workbooks/${workbookId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columns: newColumns }),
+      }).catch(err => console.error('Column cloud sync failed:', err));
+    }, 1500);
+  }, []);
+
   // Toggle column visibility
   const handleColumnToggle = useCallback((key: string) => {
-    setColumns(prev => prev.map(col =>
-      col.key === key ? { ...col, visible: !col.visible } : col
-    ));
-  }, []);
+    setColumns(prev => {
+      const updated = prev.map(col =>
+        col.key === key ? { ...col, visible: !col.visible } : col
+      );
+      saveColumnsToStorage(updated, currentWorkbookId);
+      return updated;
+    });
+  }, [currentWorkbookId, saveColumnsToStorage]);
 
   // Reorder columns
   const handleColumnReorder = useCallback((fromIndex: number, toIndex: number) => {
@@ -347,9 +449,10 @@ export default function Home() {
       const newColumns = [...prev];
       const [removed] = newColumns.splice(fromIndex, 1);
       newColumns.splice(toIndex, 0, removed);
+      saveColumnsToStorage(newColumns, currentWorkbookId);
       return newColumns;
     });
-  }, []);
+  }, [currentWorkbookId, saveColumnsToStorage]);
 
   // Edit patient
   const handleEdit = useCallback((index: number) => {
@@ -391,14 +494,24 @@ export default function Home() {
     }
   }, [selectedRow, patients, showToast]);
 
-  // Save patient with automatic background saving (AutoSave)
+  // Save patient — LS first, then cloud background
   const handleSave = useCallback(async (updatedPatient: PatientData) => {
     if (editingIndex !== null) {
       const patientId = updatedPatient._id;
       if (!patientId) return;
 
+      // Instant LS update
+      setPatients(prev => {
+        const updated = prev.map((p, i) => i === editingIndex ? updatedPatient : p);
+        if (currentWorkbookId) {
+          localStorage.setItem(PATIENTS_CACHE_KEY(currentWorkbookId), JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      // Background cloud sync
+      setSyncStatus('syncing');
       try {
-        setSyncStatus('syncing');
         const res = await fetch(`/api/patients/${patientId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -407,13 +520,18 @@ export default function Home() {
 
         if (res.ok) {
           const savedPatient = await res.json();
-          setPatients(prev => prev.map((p, i) =>
-            i === editingIndex ? savedPatient : p
-          ));
+          setPatients(prev => {
+            const updated = prev.map((p, i) => i === editingIndex ? savedPatient : p);
+            if (currentWorkbookId) {
+              localStorage.setItem(PATIENTS_CACHE_KEY(currentWorkbookId), JSON.stringify(updated));
+            }
+            return updated;
+          });
           setSyncStatus('connected');
           showToast('✅ Đã lưu dữ liệu lên Cloud!');
         } else {
           showToast('❌ Lỗi khi lưu dữ liệu lên MongoDB');
+          setSyncStatus('offline');
         }
       } catch (e) {
         console.error('Error saving patient:', e);
@@ -421,41 +539,58 @@ export default function Home() {
         setSyncStatus('offline');
       }
     }
-  }, [editingIndex, showToast]);
+  }, [editingIndex, currentWorkbookId, showToast]);
 
-  // Save and close with automatic background saving (AutoSave)
+  // Save and close — LS first, then cloud background
   const handleSaveAndClose = useCallback(async (updatedPatient: PatientData) => {
     if (editingIndex !== null) {
       const patientId = updatedPatient._id;
-      if (!patientId) return;
+      if (!patientId) {
+        setIsEditorOpen(false);
+        setEditingIndex(null);
+        return;
+      }
 
-      try {
-        setSyncStatus('syncing');
-        const res = await fetch(`/api/patients/${patientId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedPatient)
-        });
+      // Instant LS update
+      setPatients(prev => {
+        const updated = prev.map((p, i) => i === editingIndex ? updatedPatient : p);
+        if (currentWorkbookId) {
+          localStorage.setItem(PATIENTS_CACHE_KEY(currentWorkbookId), JSON.stringify(updated));
+        }
+        return updated;
+      });
 
+      // Background cloud sync
+      setSyncStatus('syncing');
+      fetch(`/api/patients/${patientId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedPatient)
+      }).then(async res => {
         if (res.ok) {
           const savedPatient = await res.json();
-          setPatients(prev => prev.map((p, i) =>
-            i === editingIndex ? savedPatient : p
-          ));
+          setPatients(prev => {
+            const updated = prev.map(p => p._id === savedPatient._id ? savedPatient : p);
+            if (currentWorkbookId) {
+              localStorage.setItem(PATIENTS_CACHE_KEY(currentWorkbookId), JSON.stringify(updated));
+            }
+            return updated;
+          });
           setSyncStatus('connected');
           showToast('✅ Đã lưu thành công!');
         } else {
           showToast('❌ Lỗi khi lưu lên Cloud');
+          setSyncStatus('offline');
         }
-      } catch (e) {
+      }).catch(e => {
         console.error('Error saving patient:', e);
-        showToast('❌ Lỗi kết nối - Chưa được lưu lên Cloud');
+        showToast('❌ Lỗi kết nối - Đã giữ tạm trên thiết bị');
         setSyncStatus('offline');
-      }
+      });
     }
     setIsEditorOpen(false);
     setEditingIndex(null);
-  }, [editingIndex, showToast]);
+  }, [editingIndex, currentWorkbookId, showToast]);
 
   // Add new column
   const handleAddColumn = useCallback(() => {
@@ -535,23 +670,27 @@ export default function Home() {
     }
   }, [currentWorkbookId, patients.length, showToast]);
 
-  // Move patient position (instantly reorders on cloud and updates all browsers)
+  // Move patient position — debounce 800ms để tránh spam API khi kéo thả liên tục
   const handleMovePatient = useCallback((fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= patients.length || !currentWorkbookId) return;
-    
+
     setPatients(prev => {
       const newPatients = [...prev];
       const [removed] = newPatients.splice(fromIndex, 1);
       newPatients.splice(toIndex, 0, removed);
-      
+
+      // Debounce: huỷ lần gọi trước, chỉ gửi API sau khi dừng kéo 800ms
+      if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
       const orderedIds = newPatients.map(p => p._id);
       setSyncStatus('syncing');
-      fetch(`/api/workbooks/${currentWorkbookId}/reorder`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderedIds })
-      }).then(() => setSyncStatus('connected'))
-        .catch(() => setSyncStatus('offline'));
+      reorderTimerRef.current = setTimeout(() => {
+        fetch(`/api/workbooks/${currentWorkbookId}/reorder`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderedIds })
+        }).then(() => setSyncStatus('connected'))
+          .catch(() => setSyncStatus('offline'));
+      }, 800);
 
       return newPatients;
     });
@@ -955,6 +1094,50 @@ export default function Home() {
               >
                 <X className="h-3.5 w-3.5" />
               </Button>
+
+              {/* Delete password dialog */}
+              {showDeleteDialog && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                  <div className="bg-white rounded-xl shadow-2xl p-6 w-80 border border-red-200">
+                    <h2 className="text-base font-bold text-red-600 mb-1">⚠️ Xác nhận xóa file</h2>
+                    <p className="text-xs text-gray-500 mb-4">
+                      Hành động này sẽ xóa vĩnh viễn file và toàn bộ dữ liệu bệnh nhân.
+                      Vui lòng nhập mật khẩu để xác nhận.
+                    </p>
+                    <input
+                      type="password"
+                      autoFocus
+                      value={deletePassword}
+                      onChange={e => { setDeletePassword(e.target.value); setDeletePasswordError(false); }}
+                      onKeyDown={e => e.key === 'Enter' && confirmDeleteWithPassword()}
+                      placeholder="Nhập mật khẩu..."
+                      className={`w-full border rounded-lg px-3 py-2 text-sm mb-1 outline-none focus:ring-2 ${
+                        deletePasswordError
+                          ? 'border-red-400 focus:ring-red-300'
+                          : 'border-gray-300 focus:ring-emerald-300'
+                      }`}
+                    />
+                    {deletePasswordError && (
+                      <p className="text-xs text-red-500 mb-3">❌ Mật khẩu không đúng!</p>
+                    )}
+                    {!deletePasswordError && <div className="mb-3" />}
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setShowDeleteDialog(false)}
+                        className="px-4 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        onClick={confirmDeleteWithPassword}
+                        className="px-4 py-1.5 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold"
+                      >
+                        Xóa file
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

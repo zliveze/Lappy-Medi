@@ -29,6 +29,35 @@ export async function GET(
   }
 }
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await dbConnect();
+    const { id } = params;
+    const body = await request.json();
+
+    // Only allow updating columns (and other non-sensitive fields)
+    const allowedFields: Record<string, any> = {};
+    if (body.columns !== undefined) allowedFields.columns = body.columns;
+
+    const workbook = await Workbook.findByIdAndUpdate(
+      id,
+      { $set: allowedFields },
+      { new: true }
+    );
+    if (!workbook) {
+      return NextResponse.json({ error: 'Workbook not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating workbook:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }

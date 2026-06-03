@@ -44,7 +44,7 @@ export async function PATCH(
 
     // Không có gì để cập nhật → trả về dữ liệu hiện tại ngay lập tức
     if (Object.keys(updateData).length === 0) {
-      const patient = await Patient.findById(id);
+      const patient = await Patient.findById(id).lean();
       return NextResponse.json(patient || { error: 'Patient not found' });
     }
 
@@ -53,7 +53,7 @@ export async function PATCH(
       { _id: id },
       { $set: updateData },
       { new: true, strict: false }
-    );
+    ).lean();
 
     if (!updatedPatient) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
@@ -74,14 +74,13 @@ export async function DELETE(
     await dbConnect();
     const { id } = params;
 
-    const patient = await Patient.findById(id);
-    if (!patient) {
+    // Hard-delete: 1 query thay vì findById + save (2 queries)
+    // Giảm kích thước collection, query nhanh hơn, index gọn hơn
+    const result = await Patient.findByIdAndDelete(id);
+
+    if (!result) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
     }
-
-    // Soft delete
-    patient.isDeleted = true;
-    await patient.save();
 
     return NextResponse.json({ success: true, message: 'Patient deleted' });
   } catch (error: any) {

@@ -33,6 +33,13 @@ async function dbConnect() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      // Giới hạn connection pool để tránh tốn RAM trên Vercel serverless
+      maxPoolSize: 5,
+      minPoolSize: 1,
+      // Timeout hợp lý để tránh function treo quá lâu
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
