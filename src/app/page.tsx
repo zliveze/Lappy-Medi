@@ -39,6 +39,9 @@ export default function Home() {
   const [batchXrayMode, setBatchXrayMode] = useState(false);
   const [selectedForBatchXray, setSelectedForBatchXray] = useState<number[]>([]);
 
+  // Toggle tooth detail table
+  const [enableToothDetail, setEnableToothDetail] = useState(true);
+
   // Delete password dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
@@ -197,6 +200,12 @@ export default function Home() {
         } catch (e) {
           console.error('Error loading clipboard:', e);
         }
+      }
+
+      // Load tooth detail setting
+      const savedToothDetail = localStorage.getItem('mediexcel_tooth_detail');
+      if (savedToothDetail !== null) {
+        setEnableToothDetail(savedToothDetail === 'true');
       }
     };
     initData();
@@ -930,6 +939,15 @@ export default function Home() {
     setSelectedForBatchXray([]);
   }, []);
 
+  // Toggle tooth detail setting
+  const handleToggleToothDetail = useCallback(() => {
+    setEnableToothDetail(prev => {
+      const newVal = !prev;
+      localStorage.setItem('mediexcel_tooth_detail', String(newVal));
+      return newVal;
+    });
+  }, []);
+
   // Toggle patient selection for batch X-ray
   const handleToggleBatchXraySelection = useCallback((index: number) => {
     setSelectedForBatchXray(prev => {
@@ -1107,6 +1125,17 @@ export default function Home() {
               >
                 <Plus className="h-3 w-3" />
                 Thêm
+              </Button>
+
+              {/* Toggle tooth detail button */}
+              <Button
+                size="sm"
+                variant={enableToothDetail ? 'default' : 'outline'}
+                onClick={handleToggleToothDetail}
+                className={`gap-1 h-7 text-xs ${enableToothDetail ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'border-indigo-300 text-indigo-700 hover:bg-indigo-50'}`}
+                title="Bật/tắt bảng chọn chi tiết răng cho sâu răng, mất răng"
+              >
+                Chi tiết răng: {enableToothDetail ? 'Bật' : 'Tắt'}
               </Button>
 
               {/* Batch X-ray button */}
@@ -1291,6 +1320,7 @@ export default function Home() {
         onPaste={handlePastePatient}
         onClearData={handleClearPatientData}
         canPaste={copiedPatientData !== null}
+        enableToothDetail={enableToothDetail}
       />
     </main>
   );

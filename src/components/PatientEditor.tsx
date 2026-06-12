@@ -30,6 +30,7 @@ interface PatientEditorProps {
     onPaste?: () => void;
     onClearData?: () => void;
     canPaste?: boolean;
+    enableToothDetail?: boolean;
 }
 
 interface BPReading {
@@ -123,6 +124,7 @@ export function PatientEditor({
     onPaste,
     onClearData,
     canPaste,
+    enableToothDetail = true,
 }: PatientEditorProps) {
     // Tab state - luôn reset về "Thể Lực & Phân Loại" khi chuyển bệnh nhân
     const [activeTab, setActiveTab] = useState('vital');
@@ -1825,7 +1827,7 @@ export function PatientEditor({
                                                         size="sm"
                                                         variant={isDentalOptionSelected(exam.dentalNote, opt) ? 'default' : 'outline'}
                                                         onClick={() => {
-                                                            if (opt === 'sâu răng' || opt === 'mất răng') {
+                                                            if ((opt === 'sâu răng' || opt === 'mất răng') && enableToothDetail) {
                                                                 const teeth = parseTeethFromNote(exam.dentalNote, opt);
                                                                 setToothDialogType(opt);
                                                                 setToothDialogTeeth(teeth);
