@@ -958,6 +958,15 @@ export default function Home() {
     });
   }, []);
 
+  // Toggle select all patients for batch X-ray
+  const handleToggleSelectAllBatchXray = useCallback((checked: boolean) => {
+    if (checked) {
+      setSelectedForBatchXray(patients.map((_, i) => i));
+    } else {
+      setSelectedForBatchXray([]);
+    }
+  }, [patients]);
+
   // Apply batch X-ray default and patch concurrently to MongoDB
   const handleApplyBatchXray = useCallback(async () => {
     if (selectedForBatchXray.length === 0) {
@@ -967,39 +976,53 @@ export default function Home() {
 
     const defaultXray = ' - Hình ảnh tim, phổi chưa ghi nhận bất thường trên phim xquang';
     setSyncStatus('syncing');
+
+    const selectedIds = selectedForBatchXray
+      .map(i => patients[i]?._id)
+      .filter((id): id is string => !!id);
     
     try {
-      const promises = selectedForBatchXray.map(async (i) => {
-        const patient = patients[i];
-        if (patient && patient._id) {
-          await fetch(`/api/patients/${patient._id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ Xquang: defaultXray })
-          });
+      if (selectedIds.length > 0) {
+        const res = await fetch('/api/patients', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ids: selectedIds,
+            updateData: { Xquang: defaultXray }
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to update patients in batch');
         }
+      }
+
+      setPatients(prev => {
+        const updated = prev.map((p, i) => {
+          if (selectedForBatchXray.includes(i)) {
+            return { ...p, Xquang: defaultXray };
+          }
+          return p;
+        });
+
+        if (currentWorkbookId) {
+          localStorage.setItem(PATIENTS_CACHE_KEY(currentWorkbookId), JSON.stringify(updated));
+        }
+
+        return updated;
       });
-
-      await Promise.all(promises);
-
-      setPatients(prev => prev.map((p, i) => {
-        if (selectedForBatchXray.includes(i)) {
-          return { ...p, Xquang: defaultXray };
-        }
-        return p;
-      }));
 
       setSyncStatus('connected');
       showToast(`✅ Đã đặt Xquang mặc định cho ${selectedForBatchXray.length} bệnh nhân`);
     } catch (e) {
-      console.error(e);
+      console.error('Batch X-ray error:', e);
       showToast('❌ Lỗi khi lưu hàng loạt Xquang');
       setSyncStatus('offline');
     }
 
     setBatchXrayMode(false);
     setSelectedForBatchXray([]);
-  }, [selectedForBatchXray, patients, showToast]);
+  }, [selectedForBatchXray, patients, currentWorkbookId, showToast]);
 
   return (
     <main className="min-h-screen bg-emerald-50/30">
@@ -1285,6 +1308,7 @@ export default function Home() {
             batchXrayMode={batchXrayMode}
             selectedForBatchXray={selectedForBatchXray}
             onToggleBatchXray={handleToggleBatchXraySelection}
+            onToggleSelectAllBatchXray={handleToggleSelectAllBatchXray}
           />
         </div>
       </div>

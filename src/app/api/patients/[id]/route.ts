@@ -52,7 +52,7 @@ export async function PATCH(
     const updatedPatient = await Patient.findOneAndUpdate(
       { _id: id },
       { $set: updateData },
-      { new: true, strict: false }
+      { returnDocument: 'after', strict: false }
     ).lean();
 
     if (!updatedPatient) {
@@ -79,7 +79,7 @@ export async function DELETE(
     const result = await Patient.findByIdAndUpdate(
       id,
       { $set: { isDeleted: true } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!result) {

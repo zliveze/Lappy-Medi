@@ -45,7 +45,7 @@ export async function PATCH(
     const workbook = await Workbook.findByIdAndUpdate(
       id,
       { $set: allowedFields },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!workbook) {
       return NextResponse.json({ error: 'Workbook not found' }, { status: 404 });

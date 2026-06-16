@@ -21,6 +21,7 @@ interface PatientTableProps {
   batchXrayMode?: boolean;
   selectedForBatchXray?: number[];
   onToggleBatchXray?: (index: number) => void;
+  onToggleSelectAllBatchXray?: (checked: boolean) => void;
 }
 
 export function PatientTable({
@@ -37,6 +38,7 @@ export function PatientTable({
   batchXrayMode,
   selectedForBatchXray,
   onToggleBatchXray,
+  onToggleSelectAllBatchXray,
 }: PatientTableProps) {
   const visibleColumns = columns.filter((col) => col.visible);
   const [draggedColumn, setDraggedColumn] = useState<number | null>(null);
@@ -190,7 +192,13 @@ export function PatientTable({
               {/* Batch X-ray checkbox column header */}
               {batchXrayMode && (
                 <th className="px-2 py-1 text-center font-medium border-r border-emerald-500 sticky left-0 bg-blue-600 z-20 w-10">
-                  ✓
+                  <Checkbox
+                    checked={data.length > 0 && selectedForBatchXray?.length === data.length}
+                    onCheckedChange={(checked) => {
+                      onToggleSelectAllBatchXray?.(!!checked);
+                    }}
+                    className="h-4 w-4 border-white/80 data-[state=checked]:bg-white data-[state=checked]:text-blue-600 mx-auto"
+                  />
                 </th>
               )}
               {showActions && !batchXrayMode && (
