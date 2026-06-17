@@ -600,8 +600,8 @@ export function PatientEditor({
 
         // 3. Kiểm tra khám tổng quát - nếu KHÔNG phải "chưa phát hiện bệnh lý"
         if (!exam.noPathologyFound) {
-            // Có nội khoa với tình trạng tăng HA hoặc ghi chú
-            if (exam.internalEnabled && (exam.bpCondition || exam.bpNote)) {
+            // Có nội khoa với tình trạng tăng HA, ghi chú hoặc bệnh lý nội khoa
+            if (exam.internalEnabled && (exam.bpCondition || exam.bpNote || exam.internalConditions.length > 0)) {
                 abnormalityCount++;
             }
             // Có bệnh lý mắt, hoặc thị lực giảm (< 10/10) khi không đeo kính
@@ -2574,7 +2574,10 @@ export function PatientEditor({
                                         key={opt}
                                         size="sm"
                                         variant={classification === opt ? 'default' : 'outline'}
-                                        onClick={() => setClassification(opt)}
+                                        onClick={() => {
+                                            setClassification(opt);
+                                            setIsClassificationManual(true);
+                                        }}
                                         className="min-w-[40px] h-8"
                                     >
                                         {opt}
