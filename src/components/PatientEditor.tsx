@@ -40,7 +40,7 @@ interface BPReading {
 
 // Entry cho mỗi bệnh lý nội khoa
 interface InternalConditionEntry {
-    prefix: string; // "Theo dõi", "Tăng", ""
+    prefix: string; // "Theo dõi", "Tăng", "Tiền căn", "Tiền sử"
     condition: string; // "tăng huyết áp", "ĐTĐ", ..., "Mạch nhanh"
     timeValue: string; // số (ví dụ: "3") - dùng cho các bệnh lý thông thường
     timeUnit: string; // "ngày", "tuần", "tháng", "năm"
@@ -209,7 +209,7 @@ export function PatientEditor({
     // Reset dirty state khi chuyển bệnh nhân
     useEffect(() => {
         if (patient) {
-            const hasData = 
+            const hasData =
                 (patient['Cân nặng'] !== undefined && patient['Cân nặng'] !== null && String(patient['Cân nặng']).trim() !== '') ||
                 (patient['KHÁM TỔNG QUÁT'] !== undefined && patient['KHÁM TỔNG QUÁT'] !== null && String(patient['KHÁM TỔNG QUÁT']).trim() !== '') ||
                 (patient['PHÂN LOẠI SỨC KHỎE'] !== undefined && patient['PHÂN LOẠI SỨC KHỎE'] !== null && String(patient['PHÂN LOẠI SỨC KHỎE']).trim() !== '');
@@ -226,7 +226,7 @@ export function PatientEditor({
     useEffect(() => {
         if (isSettlingRef.current) return; // Bỏ qua khi đang load dữ liệu
         setIsDirty(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [weight, height, exam, imaging]);
 
     // Theo dõi index trước đó để phân biệt chuyển bệnh nhân vs lưu dữ liệu
@@ -934,12 +934,12 @@ export function PatientEditor({
     // Helper function to check if dental option is selected exactly
     const isDentalOptionSelected = (note: string, opt: string): boolean => {
         if (!note || !opt) return false;
-        
+
         if (opt === 'sâu răng' || opt === 'mất răng') {
             const regex = new RegExp(`(^|,\\s*)${opt}(?:\\s*\\([^)]*\\))?(?!\\s*(?:đã|chưa)\\s+điều\\s+trị)(?:\\s*,|\\s*$)`, 'i');
             return regex.test(note);
         }
-        
+
         return isExactMatchInNote(note, opt);
     };
 
@@ -948,9 +948,9 @@ export function PatientEditor({
         const currentNote = note.trim();
         const sortedTeeth = [...selectedTeeth].sort((a, b) => a - b);
         const formatted = sortedTeeth.length > 0 ? `${type} (${sortedTeeth.join(', ')})` : type;
-        
+
         const regex = new RegExp(`${type}(?:\\s*\\([^)]*\\))?(?!\\s*(?:đã|chưa)\\s+điều\\s+trị)`, 'i');
-        
+
         if (regex.test(currentNote)) {
             return currentNote
                 .replace(regex, formatted)
@@ -966,7 +966,7 @@ export function PatientEditor({
     const removeDentalOptionFromNote = (note: string, type: 'mất răng' | 'sâu răng'): string => {
         const currentNote = note.trim();
         const regex = new RegExp(`${type}(?:\\s*\\([^)]*\\))?(?!\\s*(?:đã|chưa)\\s+điều\\s+trị)(?:\\s*,?\\s*)?`, 'gi');
-        
+
         return currentNote
             .replace(regex, '')
             .replace(/,\s*,/g, ',')
@@ -1000,11 +1000,10 @@ export function PatientEditor({
                             </DialogTitle>
                             {/* Trạng thái lưu của bệnh nhân */}
                             <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                                    !isDirty
-                                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-                                        : 'bg-amber-100 text-amber-700 border border-amber-300'
-                                }`}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${!isDirty
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                                    : 'bg-amber-100 text-amber-700 border border-amber-300'
+                                    }`}
                                 title={!isDirty ? 'Dữ liệu đã được lưu' : 'Có thay đổi chưa lưu'}
                             >
                                 {!isDirty ? (
@@ -1842,11 +1841,11 @@ export function PatientEditor({
                                                                         .replace(/,\s*,/g, ',')
                                                                         .trim();
                                                                     setExam({ ...exam, dentalNote: newNote });
-                                                                 } else {
-                                                                     // Nếu chưa có thì cộng thêm
-                                                                     const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
-                                                                     setExam({ ...exam, dentalNote: newNote });
-                                                                 }
+                                                                } else {
+                                                                    // Nếu chưa có thì cộng thêm
+                                                                    const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                                                    setExam({ ...exam, dentalNote: newNote });
+                                                                }
                                                             }
                                                         }}
                                                     >
@@ -2611,11 +2610,11 @@ export function PatientEditor({
             {/* === PREVIEW PANEL - floats beside the dialog, both sections always visible === */}
             {isOpen && (
                 <div className="fixed z-[60] w-[340px] max-h-[90vh] overflow-y-auto rounded-lg border border-gray-200 shadow-lg bg-white"
-                     style={{
-                         top: '50%',
-                         transform: 'translateY(-50%)',
-                         left: 'calc(50% + 512px + 12px)',
-                     }}>
+                    style={{
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        left: 'calc(50% + 512px + 12px)',
+                    }}>
                     {/* === KHÁM TỔNG QUÁT === */}
                     <div className="sticky top-0 z-10 px-4 py-2 border-b bg-emerald-100 border-emerald-200">
                         <span className="font-semibold text-sm text-emerald-800">📋 KHÁM TỔNG QUÁT</span>
