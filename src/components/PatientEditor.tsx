@@ -456,11 +456,15 @@ export function PatientEditor({
                 const internalConditions: InternalConditionEntry[] = [];
 
                 // Pattern cho "tăng huyết áp" (cụm từ đầy đủ, an toàn)
-                const thaPattern = /(?:(theo dõi)\s+)?tăng huyết áp(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi;
+                const thaPattern = /(?:(theo dõi|tăng|tiền sử|tiền căn)\s+)?(?:tăng huyết áp|cao huyết áp)(?:\s+khoảng\s+(\d+)\s+(ngày|tuần|tháng|năm))?(?:\s+(đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi;
                 let thaMatch;
                 while ((thaMatch = thaPattern.exec(line)) !== null) {
+                    const rawPrefix = thaMatch[1] || '';
+                    const matchedPrefix = INTERNAL_PREFIX_OPTIONS.find(
+                        opt => opt.toLowerCase() === rawPrefix.toLowerCase()
+                    ) || '';
                     internalConditions.push({
-                        prefix: thaMatch[1] || '',
+                        prefix: matchedPrefix,
                         condition: 'tăng huyết áp',
                         timeValue: thaMatch[2] || '',
                         timeUnit: thaMatch[3] || '',
@@ -469,11 +473,15 @@ export function PatientEditor({
                 }
 
                 // Pattern cho "mạch nhanh"
-                const machNhanhPattern = /(?:(theo dõi)\s+)?mạch nhanh(?:\s*\((\d+)\))?/gi;
+                const machNhanhPattern = /(?:(theo dõi|tăng|tiền sử|tiền căn)\s+)?mạch nhanh(?:\s*\((\d+)\))?/gi;
                 let machNhanhMatch;
                 while ((machNhanhMatch = machNhanhPattern.exec(line)) !== null) {
+                    const rawPrefix = machNhanhMatch[1] || '';
+                    const matchedPrefix = INTERNAL_PREFIX_OPTIONS.find(
+                        opt => opt.toLowerCase() === rawPrefix.toLowerCase()
+                    ) || '';
                     internalConditions.push({
-                        prefix: machNhanhMatch[1] || '',
+                        prefix: matchedPrefix,
                         condition: 'Mạch nhanh',
                         timeValue: '',
                         timeUnit: '',
@@ -489,8 +497,8 @@ export function PatientEditor({
                 // Parse ghi chú - loại bỏ phần đã parse (conditions, HA, ngoặc)
                 let noteText = line.replace(/^.*?:/, '').trim();
                 // Remove parsed conditions
-                noteText = noteText.replace(/(?:theo dõi\s+)?tăng huyết áp(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi, '');
-                noteText = noteText.replace(/(?:theo dõi\s+)?mạch nhanh(?:\s*\(\d+\))?/gi, '');
+                noteText = noteText.replace(/(?:(?:theo dõi|tăng|tiền sử|tiền căn)\s+)?(?:tăng huyết áp|cao huyết áp)(?:\s+khoảng\s+\d+\s+(?:ngày|tuần|tháng|năm))?(?:\s+(?:đang điều trị|không điều trị|điều trị không thường xuyên|bỏ điều trị))?/gi, '');
+                noteText = noteText.replace(/(?:(?:theo dõi|tăng|tiền sử|tiền căn)\s+)?mạch nhanh(?:\s*\(\d+\))?/gi, '');
                 // Remove HA readings (cả trong ngoặc lẫn ngoài)
                 noteText = noteText.replace(/\(\s*(?:L?\d?\s*HA\s*\d+\/\d+\s*mmHg(?:,\s*)?)+\s*\)/gi, '');
                 noteText = noteText.replace(/L?\d?\s*HA\s*\d+\/\d+\s*mmHg/gi, '');
