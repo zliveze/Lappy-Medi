@@ -1798,13 +1798,13 @@ export function PatientEditor({
                                                 <div className="flex items-center gap-2">
                                                     <Label>Sức nhai:</Label>
                                                     <Input
-                                                        type="number"
-                                                        min={0}
-                                                        max={100}
-                                                        step={5}
+                                                        type="text"
+                                                        inputMode="numeric"
+                                                        pattern="[0-9]*"
                                                         value={exam.chewingPower}
                                                         onChange={(e) => {
-                                                            const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                                                            const cleanVal = e.target.value.replace(/[^0-9]/g, '');
+                                                            const val = cleanVal ? Math.min(100, parseInt(cleanVal) || 0) : 0;
                                                             setExam({ ...exam, chewingPower: val });
                                                         }}
                                                         onFocus={(e) => e.target.select()}
