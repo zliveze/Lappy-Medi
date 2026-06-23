@@ -87,17 +87,24 @@ export const EYE_OPTIONS = [
   '2 mắt lão thị',
 ];
 
+export const ENT_EAR_OPTIONS = [
+  'theo dõi viêm tai',
+  'thủng nhĩ',
+  'viêm ống tai',
+];
+
 export const ENT_OPTIONS = [
   'amidan quá phát',
   'viêm họng hạt',
   'viêm amidan mạn tính',
+  'viêm amidan mạn',
+  'viêm anidan mạn',
   'viêm mũi dị ứng',
   'u cuốn mũi',
   'viêm xoang hàm',
   'polyp mũi',
   'vẹo vách ngăn',
   'viêm mũi mạn tính'
-
 ];
 
 export const DENTAL_OPTIONS = [
