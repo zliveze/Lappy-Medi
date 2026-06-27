@@ -2795,6 +2795,8 @@ export function PatientEditor({
                                                         <div className="flex flex-wrap gap-1">
                                                             {[
                                                                 'các buồng tim không dày + dãn',
+                                                                'rối loạn chức năng tâm trương thất trái',
+                                                                'rối loạn chức năng tâm thu thất phải',
                                                                 'không rối loạn vận động vùng',
                                                                 'tăng áp phổi',
                                                                 'không tăng áp phổi',
