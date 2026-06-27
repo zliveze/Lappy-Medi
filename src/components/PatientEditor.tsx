@@ -986,11 +986,11 @@ export function PatientEditor({
     const groupEyeNote = (note: string): string => {
         if (!note) return '';
         const parts = note.split(',').map(p => p.trim()).filter(Boolean);
-        
+
         const pOptions: string[] = [];
         const tOptions: string[] = [];
         const generalOptions: string[] = [];
-        
+
         parts.forEach(part => {
             if (part.startsWith('mắt (P):')) {
                 pOptions.push(part.replace('mắt (P):', '').trim());
@@ -1000,7 +1000,7 @@ export function PatientEditor({
                 generalOptions.push(part);
             }
         });
-        
+
         const groupedParts: string[] = [];
         if (pOptions.length > 0) {
             groupedParts.push(`mắt (P): ${pOptions.join(', ')}`);
@@ -1011,7 +1011,7 @@ export function PatientEditor({
         if (generalOptions.length > 0) {
             groupedParts.push(...generalOptions);
         }
-        
+
         return groupedParts.join(', ');
     };
 
@@ -1020,11 +1020,11 @@ export function PatientEditor({
         const parts = note.split(',').map(p => p.trim()).filter(Boolean);
         const expandedParts: string[] = [];
         let currentEyeSide: 'mắt (P)' | 'mắt (T)' | null = null;
-        
+
         parts.forEach(part => {
             let matchedSide: 'mắt (P)' | 'mắt (T)' | null = null;
             let optionText = part;
-            
+
             if (part.startsWith('mắt (P):')) {
                 matchedSide = 'mắt (P)';
                 optionText = part.replace('mắt (P):', '').trim();
@@ -1032,11 +1032,11 @@ export function PatientEditor({
                 matchedSide = 'mắt (T)';
                 optionText = part.replace('mắt (T):', '').trim();
             }
-            
+
             if (matchedSide) {
                 currentEyeSide = matchedSide;
             }
-            
+
             if (currentEyeSide) {
                 // Check if this part is a single eye option
                 const isSingleEyeOpt = EYE_OPTIONS_SINGLE.some(opt => opt.toLowerCase() === optionText.toLowerCase());
@@ -1051,7 +1051,7 @@ export function PatientEditor({
                 expandedParts.push(optionText);
             }
         });
-        
+
         return expandedParts.join(', ');
     };
 
@@ -1059,12 +1059,12 @@ export function PatientEditor({
     const groupEntNote = (note: string): string => {
         if (!note) return '';
         const parts = note.split(',').map(p => p.trim()).filter(Boolean);
-        
+
         const pOptions: string[] = [];
         const tOptions: string[] = [];
         const bothOptions: string[] = [];
         const generalOptions: string[] = [];
-        
+
         parts.forEach(part => {
             if (part.startsWith('tai (P):')) {
                 pOptions.push(part.replace('tai (P):', '').trim());
@@ -1076,7 +1076,7 @@ export function PatientEditor({
                 generalOptions.push(part);
             }
         });
-        
+
         const groupedParts: string[] = [];
         if (pOptions.length > 0) {
             groupedParts.push(`tai (P): ${pOptions.join(', ')}`);
@@ -1090,7 +1090,7 @@ export function PatientEditor({
         if (generalOptions.length > 0) {
             groupedParts.push(...generalOptions);
         }
-        
+
         return groupedParts.join(', ');
     };
 
@@ -1099,11 +1099,11 @@ export function PatientEditor({
         const parts = note.split(',').map(p => p.trim()).filter(Boolean);
         const expandedParts: string[] = [];
         let currentEarSide: 'tai (P)' | 'tai (T)' | '2 tai' | null = null;
-        
+
         parts.forEach(part => {
             let matchedSide: 'tai (P)' | 'tai (T)' | '2 tai' | null = null;
             let optionText = part;
-            
+
             if (part.startsWith('tai (P):')) {
                 matchedSide = 'tai (P)';
                 optionText = part.replace('tai (P):', '').trim();
@@ -1114,11 +1114,11 @@ export function PatientEditor({
                 matchedSide = '2 tai';
                 optionText = part.replace('2 tai:', '').trim();
             }
-            
+
             if (matchedSide) {
                 currentEarSide = matchedSide;
             }
-            
+
             if (currentEarSide) {
                 // Check if this part is an ear option
                 const isEarOpt = ENT_EAR_OPTIONS.some(opt => opt.toLowerCase() === optionText.toLowerCase());
@@ -1133,7 +1133,7 @@ export function PatientEditor({
                 expandedParts.push(optionText);
             }
         });
-        
+
         return expandedParts.join(', ');
     };
 
@@ -1647,212 +1647,212 @@ export function PatientEditor({
                                         <h3 className="font-semibold">Mắt</h3>
                                     </label>
                                     {exam.eyeEnabled && (
-                                             <>
-                                                 {/* Thị lực */}
-                                                 <div className="grid grid-cols-2 gap-4">
-                                                     {/* Mắt phải */}
-                                                     <div className="space-y-2">
-                                                         <div className="flex items-center gap-2">
-                                                             <Label className="w-20">Mắt (P)</Label>
-                                                             <Button
-                                                                 size="sm"
-                                                                 variant={exam.visionRightMode === 'normal' ? 'default' : 'outline'}
-                                                                 onClick={() => setExam({ ...exam, visionRightMode: 'normal', visionRight: '10/10' })}
-                                                             >
-                                                                 x/10
-                                                             </Button>
-                                                             <Button
-                                                                 size="sm"
-                                                                 variant={exam.visionRightMode === 'dnt' ? 'default' : 'outline'}
-                                                                 onClick={() => setExam({ ...exam, visionRightMode: 'dnt', visionRight: 'ĐNT 3m' })}
-                                                             >
-                                                                 ĐNT
-                                                             </Button>
-                                                         </div>
-                                                         <Select value={exam.visionRight} onValueChange={(v) => setExam({ ...exam, visionRight: v })}>
-                                                             <SelectTrigger><SelectValue /></SelectTrigger>
-                                                             <SelectContent>
-                                                                 {(exam.visionRightMode === 'normal' ? VISION_OPTIONS : DNT_OPTIONS).map(v => (
-                                                                     <SelectItem key={v} value={v}>{v}</SelectItem>
-                                                                 ))}
-                                                             </SelectContent>
-                                                         </Select>
-                                                         {/* Bệnh lý mắt phải */}
-                                                         <div className="flex flex-wrap gap-1">
-                                                             {EYE_OPTIONS_SINGLE.map((opt) => {
-                                                                 const isMongThit = opt.includes('Mộng thịt');
-                                                                 const optWithSide = `mắt (P): ${opt}`;
-                                                                 const isSelected = exam.eyeConditionsRight.includes(opt) || isExactMatchInNote(expandEyeNote(exam.eyeNote), optWithSide);
-                                                                 return (
-                                                                     <Button
-                                                                         key={opt}
-                                                                         size="sm"
-                                                                         variant={isSelected ? 'default' : 'outline'}
-                                                                         onClick={() => {
-                                                                             const currentNote = expandEyeNote(exam.eyeNote.trim());
-                                                                             if (isExactMatchInNote(currentNote, optWithSide)) {
-                                                                                 const newNote = currentNote
-                                                                                     .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                     .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                     .replace(/,\s*,/g, ',')
-                                                                                     .trim();
-                                                                                 setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                             } else {
-                                                                                 if (isMongThit) {
-                                                                                     let newNote = currentNote;
-                                                                                     EYE_OPTIONS_SINGLE.filter(o => o.includes('Mộng thịt')).forEach(mongThitOpt => {
-                                                                                         const mongThitWithSide = `mắt (P): ${mongThitOpt}`;
-                                                                                         newNote = newNote
-                                                                                             .replace(new RegExp(mongThitWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                             .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                             .replace(/,\s*,/g, ',')
-                                                                                             .trim();
-                                                                                     });
-                                                                                     newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
-                                                                                     setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                                 } else {
-                                                                                     const newNote = currentNote ? `${currentNote}, ${optWithSide}` : optWithSide;
-                                                                                     setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                                 }
-                                                                             }
-                                                                         }}
-                                                                         className="text-xs px-2 py-1 h-7"
-                                                                     >
-                                                                         {opt}
-                                                                     </Button>
-                                                                 );
-                                                             })}
-                                                         </div>
-                                                     </div>
-                                             
-                                                     {/* Mắt trái */}
-                                                     <div className="space-y-2">
-                                                         <div className="flex items-center gap-2">
-                                                             <Label className="w-20">Mắt (T)</Label>
-                                                             <Button
-                                                                 size="sm"
-                                                                 variant={exam.visionLeftMode === 'normal' ? 'default' : 'outline'}
-                                                                 onClick={() => setExam({ ...exam, visionLeftMode: 'normal', visionLeft: '10/10' })}
-                                                             >
-                                                                 x/10
-                                                             </Button>
-                                                             <Button
-                                                                 size="sm"
-                                                                 variant={exam.visionLeftMode === 'dnt' ? 'default' : 'outline'}
-                                                                 onClick={() => setExam({ ...exam, visionLeftMode: 'dnt', visionLeft: 'ĐNT 3m' })}
-                                                             >
-                                                                 ĐNT
-                                                             </Button>
-                                                         </div>
-                                                         <Select value={exam.visionLeft} onValueChange={(v) => setExam({ ...exam, visionLeft: v })}>
-                                                             <SelectTrigger><SelectValue /></SelectTrigger>
-                                                             <SelectContent>
-                                                                 {(exam.visionLeftMode === 'normal' ? VISION_OPTIONS : DNT_OPTIONS).map(v => (
-                                                                     <SelectItem key={v} value={v}>{v}</SelectItem>
-                                                                 ))}
-                                                             </SelectContent>
-                                                         </Select>
-                                                         {/* Bệnh lý mắt trái */}
-                                                         <div className="flex flex-wrap gap-1">
-                                                             {EYE_OPTIONS_SINGLE.map((opt) => {
-                                                                 const isMongThit = opt.includes('Mộng thịt');
-                                                                 const optWithSide = `mắt (T): ${opt}`;
-                                                                 const isSelected = exam.eyeConditionsLeft.includes(opt) || isExactMatchInNote(expandEyeNote(exam.eyeNote), optWithSide);
-                                                                 return (
-                                                                     <Button
-                                                                         key={opt}
-                                                                         size="sm"
-                                                                         variant={isSelected ? 'default' : 'outline'}
-                                                                         onClick={() => {
-                                                                             const currentNote = expandEyeNote(exam.eyeNote.trim());
-                                                                             if (isExactMatchInNote(currentNote, optWithSide)) {
-                                                                                 const newNote = currentNote
-                                                                                     .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                     .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                     .replace(/,\s*,/g, ',')
-                                                                                     .trim();
-                                                                                 setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                             } else {
-                                                                                 if (isMongThit) {
-                                                                                     let newNote = currentNote;
-                                                                                     EYE_OPTIONS_SINGLE.filter(o => o.includes('Mộng thịt')).forEach(mongThitOpt => {
-                                                                                         const mongThitWithSide = `mắt (T): ${mongThitOpt}`;
-                                                                                         newNote = newNote
-                                                                                             .replace(new RegExp(mongThitWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                             .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                             .replace(/,\s*,/g, ',')
-                                                                                             .trim();
-                                                                                     });
-                                                                                     newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
-                                                                                     setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                                 } else {
-                                                                                     const newNote = currentNote ? `${currentNote}, ${optWithSide}` : optWithSide;
-                                                                                     setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                                 }
-                                                                             }
-                                                                         }}
-                                                                         className="text-xs px-2 py-1 h-7"
-                                                                     >
-                                                                         {opt}
-                                                                     </Button>
-                                                                 );
-                                                             })}
-                                                         </div>
-                                                     </div>
-                                                 </div>
+                                        <>
+                                            {/* Thị lực */}
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Mắt phải */}
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <Label className="w-20">Mắt (P)</Label>
+                                                        <Button
+                                                            size="sm"
+                                                            variant={exam.visionRightMode === 'normal' ? 'default' : 'outline'}
+                                                            onClick={() => setExam({ ...exam, visionRightMode: 'normal', visionRight: '10/10' })}
+                                                        >
+                                                            x/10
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant={exam.visionRightMode === 'dnt' ? 'default' : 'outline'}
+                                                            onClick={() => setExam({ ...exam, visionRightMode: 'dnt', visionRight: 'ĐNT 3m' })}
+                                                        >
+                                                            ĐNT
+                                                        </Button>
+                                                    </div>
+                                                    <Select value={exam.visionRight} onValueChange={(v) => setExam({ ...exam, visionRight: v })}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {(exam.visionRightMode === 'normal' ? VISION_OPTIONS : DNT_OPTIONS).map(v => (
+                                                                <SelectItem key={v} value={v}>{v}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {/* Bệnh lý mắt phải */}
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {EYE_OPTIONS_SINGLE.map((opt) => {
+                                                            const isMongThit = opt.includes('Mộng thịt');
+                                                            const optWithSide = `mắt (P): ${opt}`;
+                                                            const isSelected = exam.eyeConditionsRight.includes(opt) || isExactMatchInNote(expandEyeNote(exam.eyeNote), optWithSide);
+                                                            return (
+                                                                <Button
+                                                                    key={opt}
+                                                                    size="sm"
+                                                                    variant={isSelected ? 'default' : 'outline'}
+                                                                    onClick={() => {
+                                                                        const currentNote = expandEyeNote(exam.eyeNote.trim());
+                                                                        if (isExactMatchInNote(currentNote, optWithSide)) {
+                                                                            const newNote = currentNote
+                                                                                .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                .replace(/,\s*,/g, ',')
+                                                                                .trim();
+                                                                            setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                        } else {
+                                                                            if (isMongThit) {
+                                                                                let newNote = currentNote;
+                                                                                EYE_OPTIONS_SINGLE.filter(o => o.includes('Mộng thịt')).forEach(mongThitOpt => {
+                                                                                    const mongThitWithSide = `mắt (P): ${mongThitOpt}`;
+                                                                                    newNote = newNote
+                                                                                        .replace(new RegExp(mongThitWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                        .replace(/,\s*,/g, ',')
+                                                                                        .trim();
+                                                                                });
+                                                                                newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
+                                                                                setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                            } else {
+                                                                                const newNote = currentNote ? `${currentNote}, ${optWithSide}` : optWithSide;
+                                                                                setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    className="text-xs px-2 py-1 h-7"
+                                                                >
+                                                                    {opt}
+                                                                </Button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
 
-                                                 {/* Bệnh lý 2 mắt + Có kính */}
-                                                 <div className="flex items-center gap-4 flex-wrap">
-                                                     <label className="flex items-center gap-2 cursor-pointer">
-                                                         <Checkbox
-                                                             checked={exam.hasGlasses}
-                                                             onCheckedChange={(checked) => setExam({ ...exam, hasGlasses: !!checked })}
-                                                         />
-                                                         <span>Có kính (CK)</span>
-                                                     </label>
-                                                     {EYE_OPTIONS_BOTH.map((opt) => {
-                                                         const isMongThit = opt.includes('mộng thịt');
-                                                         const isSelected = isExactMatchInNote(expandEyeNote(exam.eyeNote), opt);
-                                                         return (
-                                                             <Button
-                                                                 key={opt}
-                                                                 size="sm"
-                                                                 variant={isSelected ? 'default' : 'outline'}
-                                                                 onClick={() => {
-                                                                     const currentNote = expandEyeNote(exam.eyeNote.trim());
-                                                                     if (isExactMatchInNote(currentNote, opt)) {
-                                                                         const newNote = currentNote
-                                                                             .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
-                                                                             .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                             .replace(/,\s*,/g, ',')
-                                                                             .trim();
-                                                                         setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                     } else {
-                                                                         if (isMongThit) {
-                                                                             let newNote = currentNote;
-                                                                             const sortedMongThitOpts = EYE_OPTIONS_BOTH.filter(o => o.includes('mộng thịt')).sort((a, b) => b.length - a.length);
-                                                                             sortedMongThitOpts.forEach(mongThitOpt => {
-                                                                                 newNote = newNote
-                                                                                     .replace(new RegExp(mongThitOpt + ',?\\s*', 'gi'), '')
-                                                                                     .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                     .replace(/,\s*,/g, ',')
-                                                                                     .trim();
-                                                                             });
-                                                                             newNote = newNote ? `${newNote}, ${opt}` : opt;
-                                                                             setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                         } else {
-                                                                             const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
-                                                                             setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
-                                                                         }
-                                                                     }
-                                                                 }}
-                                                             >
-                                                                 {opt}
-                                                             </Button>
-                                                         );
-                                                     })}
-                                                 </div>
-                                             <Input
+                                                {/* Mắt trái */}
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <Label className="w-20">Mắt (T)</Label>
+                                                        <Button
+                                                            size="sm"
+                                                            variant={exam.visionLeftMode === 'normal' ? 'default' : 'outline'}
+                                                            onClick={() => setExam({ ...exam, visionLeftMode: 'normal', visionLeft: '10/10' })}
+                                                        >
+                                                            x/10
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant={exam.visionLeftMode === 'dnt' ? 'default' : 'outline'}
+                                                            onClick={() => setExam({ ...exam, visionLeftMode: 'dnt', visionLeft: 'ĐNT 3m' })}
+                                                        >
+                                                            ĐNT
+                                                        </Button>
+                                                    </div>
+                                                    <Select value={exam.visionLeft} onValueChange={(v) => setExam({ ...exam, visionLeft: v })}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {(exam.visionLeftMode === 'normal' ? VISION_OPTIONS : DNT_OPTIONS).map(v => (
+                                                                <SelectItem key={v} value={v}>{v}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {/* Bệnh lý mắt trái */}
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {EYE_OPTIONS_SINGLE.map((opt) => {
+                                                            const isMongThit = opt.includes('Mộng thịt');
+                                                            const optWithSide = `mắt (T): ${opt}`;
+                                                            const isSelected = exam.eyeConditionsLeft.includes(opt) || isExactMatchInNote(expandEyeNote(exam.eyeNote), optWithSide);
+                                                            return (
+                                                                <Button
+                                                                    key={opt}
+                                                                    size="sm"
+                                                                    variant={isSelected ? 'default' : 'outline'}
+                                                                    onClick={() => {
+                                                                        const currentNote = expandEyeNote(exam.eyeNote.trim());
+                                                                        if (isExactMatchInNote(currentNote, optWithSide)) {
+                                                                            const newNote = currentNote
+                                                                                .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                .replace(/,\s*,/g, ',')
+                                                                                .trim();
+                                                                            setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                        } else {
+                                                                            if (isMongThit) {
+                                                                                let newNote = currentNote;
+                                                                                EYE_OPTIONS_SINGLE.filter(o => o.includes('Mộng thịt')).forEach(mongThitOpt => {
+                                                                                    const mongThitWithSide = `mắt (T): ${mongThitOpt}`;
+                                                                                    newNote = newNote
+                                                                                        .replace(new RegExp(mongThitWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                        .replace(/,\s*,/g, ',')
+                                                                                        .trim();
+                                                                                });
+                                                                                newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
+                                                                                setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                            } else {
+                                                                                const newNote = currentNote ? `${currentNote}, ${optWithSide}` : optWithSide;
+                                                                                setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    className="text-xs px-2 py-1 h-7"
+                                                                >
+                                                                    {opt}
+                                                                </Button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Bệnh lý 2 mắt + Có kính */}
+                                            <div className="flex items-center gap-4 flex-wrap">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <Checkbox
+                                                        checked={exam.hasGlasses}
+                                                        onCheckedChange={(checked) => setExam({ ...exam, hasGlasses: !!checked })}
+                                                    />
+                                                    <span>Có kính (CK)</span>
+                                                </label>
+                                                {EYE_OPTIONS_BOTH.map((opt) => {
+                                                    const isMongThit = opt.includes('mộng thịt');
+                                                    const isSelected = isExactMatchInNote(expandEyeNote(exam.eyeNote), opt);
+                                                    return (
+                                                        <Button
+                                                            key={opt}
+                                                            size="sm"
+                                                            variant={isSelected ? 'default' : 'outline'}
+                                                            onClick={() => {
+                                                                const currentNote = expandEyeNote(exam.eyeNote.trim());
+                                                                if (isExactMatchInNote(currentNote, opt)) {
+                                                                    const newNote = currentNote
+                                                                        .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                                                        .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                        .replace(/,\s*,/g, ',')
+                                                                        .trim();
+                                                                    setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                } else {
+                                                                    if (isMongThit) {
+                                                                        let newNote = currentNote;
+                                                                        const sortedMongThitOpts = EYE_OPTIONS_BOTH.filter(o => o.includes('mộng thịt')).sort((a, b) => b.length - a.length);
+                                                                        sortedMongThitOpts.forEach(mongThitOpt => {
+                                                                            newNote = newNote
+                                                                                .replace(new RegExp(mongThitOpt + ',?\\s*', 'gi'), '')
+                                                                                .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                .replace(/,\s*,/g, ',')
+                                                                                .trim();
+                                                                        });
+                                                                        newNote = newNote ? `${newNote}, ${opt}` : opt;
+                                                                        setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                    } else {
+                                                                        const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                                                        setExam({ ...exam, eyeNote: groupEyeNote(newNote) });
+                                                                    }
+                                                                }
+                                                            }}
+                                                        >
+                                                            {opt}
+                                                        </Button>
+                                                    );
+                                                })}
+                                            </div>
+                                            <Input
                                                 placeholder="Ghi chú thêm..."
                                                 value={exam.eyeNote}
                                                 onChange={(e) => setExam({ ...exam, eyeNote: e.target.value })}
@@ -1882,173 +1882,173 @@ export function PatientEditor({
                                         <h3 className="font-semibold">Tai Mũi Họng</h3>
                                     </label>
                                     {exam.entEnabled && (
-                                             <>
-                                                 <div className="space-y-4">
-                                                     {/* Bệnh lý Tai */}
-                                                     <div className="space-y-3">
-                                                         <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bệnh lý Tai</h4>
-                                                         
-                                                         {/* Tai Phải */}
-                                                         <div className="space-y-1.5 pl-2 border-l-2 border-blue-200">
-                                                             <Label className="text-xs text-gray-500">Tai (P)</Label>
-                                                             <div className="flex flex-wrap gap-1">
-                                                                 {ENT_EAR_OPTIONS.map((opt) => {
-                                                                     const optWithSide = `tai (P): ${opt}`;
-                                                                     const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), optWithSide);
-                                                                     return (
-                                                                         <Button
-                                                                             key={opt}
-                                                                             size="sm"
-                                                                             variant={isSelected ? 'default' : 'outline'}
-                                                                             onClick={() => {
-                                                                                 const currentNote = expandEntNote(exam.entNote.trim());
-                                                                                 if (isExactMatchInNote(currentNote, optWithSide)) {
-                                                                                     const newNote = currentNote
-                                                                                         .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                         .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                         .replace(/,\s*,/g, ',')
-                                                                                         .trim();
-                                                                                     setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                                 } else {
-                                                                                     const bothSide = `2 tai: ${opt}`;
-                                                                                     let newNote = currentNote
-                                                                                         .replace(new RegExp(bothSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                         .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                         .replace(/,\s*,/g, ',')
-                                                                                         .trim();
-                                                                                     newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
-                                                                                     setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                                 }
-                                                                             }}
-                                                                             className="text-xs px-2 py-1 h-7"
-                                                                         >
-                                                                             {opt}
-                                                                         </Button>
-                                                                     );
-                                                                 })}
-                                                             </div>
-                                                         </div>
-                                             
-                                                         {/* Tai Trái */}
-                                                         <div className="space-y-1.5 pl-2 border-l-2 border-green-200">
-                                                             <Label className="text-xs text-gray-500">Tai (T)</Label>
-                                                             <div className="flex flex-wrap gap-1">
-                                                                 {ENT_EAR_OPTIONS.map((opt) => {
-                                                                     const optWithSide = `tai (T): ${opt}`;
-                                                                     const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), optWithSide);
-                                                                     return (
-                                                                         <Button
-                                                                             key={opt}
-                                                                             size="sm"
-                                                                             variant={isSelected ? 'default' : 'outline'}
-                                                                             onClick={() => {
-                                                                                 const currentNote = expandEntNote(exam.entNote.trim());
-                                                                                 if (isExactMatchInNote(currentNote, optWithSide)) {
-                                                                                     const newNote = currentNote
-                                                                                         .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                         .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                         .replace(/,\s*,/g, ',')
-                                                                                         .trim();
-                                                                                     setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                                 } else {
-                                                                                     const bothSide = `2 tai: ${opt}`;
-                                                                                     let newNote = currentNote
-                                                                                         .replace(new RegExp(bothSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                         .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                         .replace(/,\s*,/g, ',')
-                                                                                         .trim();
-                                                                                     newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
-                                                                                     setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                                 }
-                                                                             }}
-                                                                             className="text-xs px-2 py-1 h-7"
-                                                                         >
-                                                                             {opt}
-                                                                         </Button>
-                                                                     );
-                                                                 })}
-                                                             </div>
-                                                         </div>
-                                             
-                                                         {/* Cả hai tai */}
-                                                         <div className="space-y-1.5 pl-2 border-l-2 border-purple-200">
-                                                             <Label className="text-xs text-gray-500">Cả 2 tai</Label>
-                                                             <div className="flex flex-wrap gap-1">
-                                                                 {ENT_EAR_OPTIONS.map((opt) => {
-                                                                     const optWithSide = `2 tai: ${opt}`;
-                                                                     const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), optWithSide);
-                                                                     return (
-                                                                         <Button
-                                                                             key={opt}
-                                                                             size="sm"
-                                                                             variant={isSelected ? 'default' : 'outline'}
-                                                                             onClick={() => {
-                                                                                 const currentNote = expandEntNote(exam.entNote.trim());
-                                                                                 if (isExactMatchInNote(currentNote, optWithSide)) {
-                                                                                     const newNote = currentNote
-                                                                                         .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                         .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                         .replace(/,\s*,/g, ',')
-                                                                                         .trim();
-                                                                                     setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                                 } else {
-                                                                                     const pSide = `tai (P): ${opt}`;
-                                                                                     const tSide = `tai (T): ${opt}`;
-                                                                                     let newNote = currentNote
-                                                                                         .replace(new RegExp(pSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                         .replace(new RegExp(tSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
-                                                                                         .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                         .replace(/,\s*,/g, ',')
-                                                                                         .trim();
-                                                                                     newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
-                                                                                     setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                                 }
-                                                                             }}
-                                                                             className="text-xs px-2 py-1 h-7"
-                                                                         >
-                                                                             {opt}
-                                                                         </Button>
-                                                                     );
-                                                                 })}
-                                                             </div>
-                                                         </div>
-                                                     </div>
-                                             
-                                                     {/* Bệnh lý Mũi Họng */}
-                                                     <div className="space-y-2 pt-2 border-t">
-                                                         <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bệnh lý Mũi Họng</h4>
-                                                         <div className="flex flex-wrap gap-1.5">
-                                                             {ENT_OPTIONS.map((opt) => {
-                                                                 const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), opt);
-                                                                 return (
-                                                                     <Button
-                                                                         key={opt}
-                                                                         size="sm"
-                                                                         variant={isSelected ? 'default' : 'outline'}
-                                                                         onClick={() => {
-                                                                             const currentNote = expandEntNote(exam.entNote.trim());
-                                                                             if (isExactMatchInNote(currentNote, opt)) {
-                                                                                 const newNote = currentNote
-                                                                                     .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
-                                                                                     .replace(/^[\s,]+|[\s,]+$/g, '')
-                                                                                     .replace(/,\s*,/g, ',')
-                                                                                     .trim();
-                                                                                 setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                             } else {
-                                                                                 const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
-                                                                                 setExam({ ...exam, entNote: groupEntNote(newNote) });
-                                                                             }
-                                                                         }}
-                                                                         className="text-xs px-2.5 py-1 h-7"
-                                                                     >
-                                                                         {opt}
-                                                                     </Button>
-                                                                 );
-                                                             })}
-                                                         </div>
-                                                     </div>
-                                                 </div>
-                                             <Input
+                                        <>
+                                            <div className="space-y-4">
+                                                {/* Bệnh lý Tai */}
+                                                <div className="space-y-3">
+                                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bệnh lý Tai</h4>
+
+                                                    {/* Tai Phải */}
+                                                    <div className="space-y-1.5 pl-2 border-l-2 border-blue-200">
+                                                        <Label className="text-xs text-gray-500">Tai (P)</Label>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {ENT_EAR_OPTIONS.map((opt) => {
+                                                                const optWithSide = `tai (P): ${opt}`;
+                                                                const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), optWithSide);
+                                                                return (
+                                                                    <Button
+                                                                        key={opt}
+                                                                        size="sm"
+                                                                        variant={isSelected ? 'default' : 'outline'}
+                                                                        onClick={() => {
+                                                                            const currentNote = expandEntNote(exam.entNote.trim());
+                                                                            if (isExactMatchInNote(currentNote, optWithSide)) {
+                                                                                const newNote = currentNote
+                                                                                    .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                    .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                    .replace(/,\s*,/g, ',')
+                                                                                    .trim();
+                                                                                setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                            } else {
+                                                                                const bothSide = `2 tai: ${opt}`;
+                                                                                let newNote = currentNote
+                                                                                    .replace(new RegExp(bothSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                    .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                    .replace(/,\s*,/g, ',')
+                                                                                    .trim();
+                                                                                newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
+                                                                                setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                            }
+                                                                        }}
+                                                                        className="text-xs px-2 py-1 h-7"
+                                                                    >
+                                                                        {opt}
+                                                                    </Button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Tai Trái */}
+                                                    <div className="space-y-1.5 pl-2 border-l-2 border-green-200">
+                                                        <Label className="text-xs text-gray-500">Tai (T)</Label>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {ENT_EAR_OPTIONS.map((opt) => {
+                                                                const optWithSide = `tai (T): ${opt}`;
+                                                                const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), optWithSide);
+                                                                return (
+                                                                    <Button
+                                                                        key={opt}
+                                                                        size="sm"
+                                                                        variant={isSelected ? 'default' : 'outline'}
+                                                                        onClick={() => {
+                                                                            const currentNote = expandEntNote(exam.entNote.trim());
+                                                                            if (isExactMatchInNote(currentNote, optWithSide)) {
+                                                                                const newNote = currentNote
+                                                                                    .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                    .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                    .replace(/,\s*,/g, ',')
+                                                                                    .trim();
+                                                                                setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                            } else {
+                                                                                const bothSide = `2 tai: ${opt}`;
+                                                                                let newNote = currentNote
+                                                                                    .replace(new RegExp(bothSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                    .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                    .replace(/,\s*,/g, ',')
+                                                                                    .trim();
+                                                                                newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
+                                                                                setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                            }
+                                                                        }}
+                                                                        className="text-xs px-2 py-1 h-7"
+                                                                    >
+                                                                        {opt}
+                                                                    </Button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Cả hai tai */}
+                                                    <div className="space-y-1.5 pl-2 border-l-2 border-purple-200">
+                                                        <Label className="text-xs text-gray-500">Cả 2 tai</Label>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {ENT_EAR_OPTIONS.map((opt) => {
+                                                                const optWithSide = `2 tai: ${opt}`;
+                                                                const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), optWithSide);
+                                                                return (
+                                                                    <Button
+                                                                        key={opt}
+                                                                        size="sm"
+                                                                        variant={isSelected ? 'default' : 'outline'}
+                                                                        onClick={() => {
+                                                                            const currentNote = expandEntNote(exam.entNote.trim());
+                                                                            if (isExactMatchInNote(currentNote, optWithSide)) {
+                                                                                const newNote = currentNote
+                                                                                    .replace(new RegExp(optWithSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                    .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                    .replace(/,\s*,/g, ',')
+                                                                                    .trim();
+                                                                                setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                            } else {
+                                                                                const pSide = `tai (P): ${opt}`;
+                                                                                const tSide = `tai (T): ${opt}`;
+                                                                                let newNote = currentNote
+                                                                                    .replace(new RegExp(pSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                    .replace(new RegExp(tSide.replace(/[()]/g, '\\$&') + ',?\\s*', 'gi'), '')
+                                                                                    .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                    .replace(/,\s*,/g, ',')
+                                                                                    .trim();
+                                                                                newNote = newNote ? `${newNote}, ${optWithSide}` : optWithSide;
+                                                                                setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                            }
+                                                                        }}
+                                                                        className="text-xs px-2 py-1 h-7"
+                                                                    >
+                                                                        {opt}
+                                                                    </Button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Bệnh lý Mũi Họng */}
+                                                <div className="space-y-2 pt-2 border-t">
+                                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bệnh lý Mũi Họng</h4>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {ENT_OPTIONS.map((opt) => {
+                                                            const isSelected = isExactMatchInNote(expandEntNote(exam.entNote), opt);
+                                                            return (
+                                                                <Button
+                                                                    key={opt}
+                                                                    size="sm"
+                                                                    variant={isSelected ? 'default' : 'outline'}
+                                                                    onClick={() => {
+                                                                        const currentNote = expandEntNote(exam.entNote.trim());
+                                                                        if (isExactMatchInNote(currentNote, opt)) {
+                                                                            const newNote = currentNote
+                                                                                .replace(new RegExp(opt + ',?\\s*', 'gi'), '')
+                                                                                .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                                .replace(/,\s*,/g, ',')
+                                                                                .trim();
+                                                                            setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                        } else {
+                                                                            const newNote = currentNote ? `${currentNote}, ${opt}` : opt;
+                                                                            setExam({ ...exam, entNote: groupEntNote(newNote) });
+                                                                        }
+                                                                    }}
+                                                                    className="text-xs px-2.5 py-1 h-7"
+                                                                >
+                                                                    {opt}
+                                                                </Button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <Input
                                                 placeholder="Ghi chú (VD: Viêm họng cấp, Viêm mũi dị ứng...)"
                                                 value={exam.entNote}
                                                 onChange={(e) => setExam({ ...exam, entNote: e.target.value })}
@@ -2720,9 +2720,9 @@ export function PatientEditor({
                                                         <Label className="text-sm font-medium">Mẫu nhanh - Chức năng:</Label>
                                                         <div className="flex flex-wrap gap-1">
                                                             {[
-                                                                'chức năng tâm thu thất trái bình thường',
-                                                                'chức năng tâm trương thất trái bình thường',
-                                                                'chức năng tâm thu thất phải bình thường',
+                                                                'chức năng tâm thu thất trái bảo tồn',
+                                                                'chức năng tâm trương thất trái bảo tồn',
+                                                                'chức năng tâm thu thất phải bảo tồn',
                                                             ].map((text) => {
                                                                 const isSelected = imaging.cardiac.includes(text);
                                                                 return (
