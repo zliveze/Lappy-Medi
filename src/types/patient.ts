@@ -170,12 +170,15 @@ export const ULTRASOUND_GYNECOLOGY_OPTIONS = [
 
 export const ULTRASOUND_CARDIAC_OPTIONS = [
   'hở van 2 lá nhẹ',
+  'hở van 2 lá 1/4',
   'hở van 3 lá nhẹ',
+  'hở van 3 lá 1/4',
   'hở van động mạch chủ nhẹ',
   'hở van động mạch phổi nhẹ',
   'dày thất trái',
   'giãn nhĩ trái',
 ];
+
 
 export const VISION_OPTIONS = [
   '10/10', '9/10', '8/10', '7/10', '6/10',

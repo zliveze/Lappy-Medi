@@ -2794,6 +2794,8 @@ export function PatientEditor({
                                                         <Label className="text-sm font-medium">Mẫu nhanh - Khác:</Label>
                                                         <div className="flex flex-wrap gap-1">
                                                             {[
+                                                                'các buồng tim không dày + dãn',
+                                                                'không rối loạn vận động vùng',
                                                                 'tăng áp phổi',
                                                                 'không tăng áp phổi',
                                                                 'dày thất trái',
