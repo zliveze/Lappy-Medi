@@ -149,6 +149,9 @@ export const ULTRASOUND_BREAST_OPTIONS = [
   'sang thương vú trái BIRADS II',
   'sang thương vú phải BIRADS II',
   'sang thương 2 vú BIRADS II',
+  'nang vú trái BIRADS II',
+  'nang vú phải BIRADS II',
+  'nang vú 2 vú BIRADS II',
   'nang tuyến vú',
   'u xơ tuyến vú',
 ];
