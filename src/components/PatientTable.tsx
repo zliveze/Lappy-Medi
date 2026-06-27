@@ -22,6 +22,7 @@ interface PatientTableProps {
   selectedForBatchXray?: number[];
   onToggleBatchXray?: (index: number) => void;
   onToggleSelectAllBatchXray?: (checked: boolean) => void;
+  isReadOnly?: boolean;
 }
 
 export function PatientTable({
@@ -39,6 +40,7 @@ export function PatientTable({
   selectedForBatchXray,
   onToggleBatchXray,
   onToggleSelectAllBatchXray,
+  isReadOnly = false,
 }: PatientTableProps) {
   const visibleColumns = columns.filter((col) => col.visible);
   const [draggedColumn, setDraggedColumn] = useState<number | null>(null);
@@ -209,16 +211,17 @@ export function PatientTable({
               {visibleColumns.map((col, idx) => (
                 <th
                   key={col.key}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, idx)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, idx)}
-                  className={`px-1 py-1 text-left font-medium border-r border-emerald-500 cursor-move select-none ${draggedColumn === idx ? 'opacity-50 bg-emerald-700' : ''
-                    }`}
+                  draggable={!isReadOnly}
+                  onDragStart={(e) => !isReadOnly && handleDragStart(e, idx)}
+                  onDragOver={(e) => !isReadOnly && handleDragOver(e)}
+                  onDrop={(e) => !isReadOnly && handleDrop(e, idx)}
+                  className={`px-1 py-1 text-left font-medium border-r border-emerald-500 select-none ${
+                    !isReadOnly ? 'cursor-move' : 'cursor-default'
+                  } ${draggedColumn === idx ? 'opacity-50 bg-emerald-700' : ''}`}
                   style={{ minWidth: col.width ? col.width * 0.7 : 70 }}
                 >
                   <div className="flex items-center gap-0.5">
-                    <GripVertical className="h-2.5 w-2.5 opacity-50 flex-shrink-0" />
+                    {!isReadOnly && <GripVertical className="h-2.5 w-2.5 opacity-50 flex-shrink-0" />}
                     <span className="truncate">{col.header}</span>
                   </div>
                 </th>
@@ -270,56 +273,62 @@ export function PatientTable({
                       {showActions && !batchXrayMode && (
                         <td className="px-1 py-0.5 text-center border-r sticky left-0 bg-inherit z-10 w-24">
                           <div className="flex items-center justify-center gap-0.5">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 text-gray-500 hover:bg-gray-100"
-                              onClick={(e) => { e.stopPropagation(); onMovePatient(index, index - 1); }}
-                              disabled={index === 0}
-                              title="Di chuyển lên"
-                            >
-                              <ArrowUp className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 text-gray-500 hover:bg-gray-100"
-                              onClick={(e) => { e.stopPropagation(); onMovePatient(index, index + 1); }}
-                              disabled={index === data.length - 1}
-                              title="Di chuyển xuống"
-                            >
-                              <ArrowDown className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 text-blue-500 hover:bg-blue-100"
-                              onClick={(e) => { e.stopPropagation(); onInsertPatient(index); }}
-                              title="Chèn BN mới"
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
+                            {!isReadOnly && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-gray-500 hover:bg-gray-100"
+                                  onClick={(e) => { e.stopPropagation(); onMovePatient(index, index - 1); }}
+                                  disabled={index === 0}
+                                  title="Di chuyển lên"
+                                >
+                                  <ArrowUp className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-gray-500 hover:bg-gray-100"
+                                  onClick={(e) => { e.stopPropagation(); onMovePatient(index, index + 1); }}
+                                  disabled={index === data.length - 1}
+                                  title="Di chuyển xuống"
+                                >
+                                  <ArrowDown className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-blue-500 hover:bg-blue-100"
+                                  onClick={(e) => { e.stopPropagation(); onInsertPatient(index); }}
+                                  title="Chèn BN mới"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-5 w-5 text-emerald-600 hover:bg-emerald-100"
                               onClick={(e) => { e.stopPropagation(); onEdit(index); }}
-                              title="Sửa"
+                              title={isReadOnly ? "Xem chi tiết" : "Sửa"}
                             >
                               <Edit className="h-3 w-3" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 text-red-500 hover:bg-red-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm('Xóa bệnh nhân này?')) onDelete(index);
-                              }}
-                              title="Xóa"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
+                            {!isReadOnly && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 text-red-500 hover:bg-red-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm('Xóa bệnh nhân này?')) onDelete(index);
+                                }}
+                                title="Xóa"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       )}

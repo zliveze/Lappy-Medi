@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Patient from '@/models/Patient';
+import { verifyAccessKey } from '@/lib/auth';
 
 // Danh sách các key hệ thống cần loại bỏ khỏi dữ liệu cập nhật
 const SYSTEM_KEYS = new Set([
@@ -37,6 +38,12 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    const accessKey = request.headers.get('x-access-key');
+    const auth = await verifyAccessKey(accessKey);
+    if (!auth.valid) {
+      return NextResponse.json({ error: 'Mã khóa không hợp lệ hoặc đã hết hạn.' }, { status: 401 });
+    }
+
     await dbConnect();
     const { id } = params;
     const body = await request.json();
@@ -71,6 +78,12 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const accessKey = request.headers.get('x-access-key');
+    const auth = await verifyAccessKey(accessKey);
+    if (!auth.valid) {
+      return NextResponse.json({ error: 'Mã khóa không hợp lệ hoặc đã hết hạn.' }, { status: 401 });
+    }
+
     await dbConnect();
     const { id } = params;
 

@@ -6,7 +6,7 @@ import { importExcel, exportExcel, resetOriginalFileInfo, restoreOriginalWorkboo
 import { PatientTable } from '@/components/PatientTable';
 import { PatientEditor } from '@/components/PatientEditor';
 import { Button } from '@/components/ui/button';
-import { Upload, Download, Plus, PlusCircle, X, RefreshCw, Radiation, Check } from 'lucide-react';
+import { Upload, Download, Plus, PlusCircle, X, RefreshCw, Radiation, Check, Lock, Unlock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { toast, Toaster } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -77,6 +77,84 @@ export default function Home() {
       toast(message, { duration: 3000 });
     }
   }, []);
+
+  // Access Key State
+  const [accessKey, setAccessKey] = useState<string>('');
+  const [isKeyValid, setIsKeyValid] = useState<boolean | null>(null);
+  const [keyUser, setKeyUser] = useState<string>('');
+  const [keyExpiry, setKeyExpiry] = useState<string>('');
+  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
+  const [inputKey, setInputKey] = useState<string>('');
+  const [keyError, setKeyError] = useState<string>('');
+
+  const handleUnauthorized = useCallback(() => {
+    showToast('❌ Quyền chỉnh sửa bị từ chối! Vui lòng nhập mã key hợp lệ.');
+    setIsKeyValid(false);
+    setShowKeyModal(true);
+  }, [showToast]);
+
+  const verifyKeyOnServer = useCallback(async (keyToVerify: string) => {
+    if (!keyToVerify) {
+      setIsKeyValid(false);
+      setKeyUser('');
+      setKeyExpiry('');
+      return false;
+    }
+    try {
+      const res = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: keyToVerify })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsKeyValid(true);
+        setKeyUser(data.user);
+        if (data.exp > 0) {
+          const expiryDate = new Date(data.exp * 1000);
+          setKeyExpiry(expiryDate.toLocaleDateString('vi-VN') + ' ' + expiryDate.toLocaleTimeString('vi-VN'));
+        } else {
+          setKeyExpiry('Vĩnh viễn');
+        }
+        return true;
+      } else {
+        setIsKeyValid(false);
+        setKeyUser('');
+        setKeyExpiry('');
+        return false;
+      }
+    } catch (err) {
+      console.error('Verify key error:', err);
+      setIsKeyValid(false);
+      return false;
+    }
+  }, []);
+
+  // Hook to check key on mount
+  useEffect(() => {
+    const storedKey = localStorage.getItem('mediexcel_access_key') || '';
+    setAccessKey(storedKey);
+    setInputKey(storedKey);
+    if (storedKey) {
+      verifyKeyOnServer(storedKey);
+    } else {
+      setIsKeyValid(false);
+    }
+  }, [verifyKeyOnServer]);
+
+  // Auth fetch wrapper
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const storedKey = localStorage.getItem('mediexcel_access_key') || '';
+    const headers = {
+      ...options.headers,
+      'x-access-key': storedKey,
+    };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      handleUnauthorized();
+    }
+    return res;
+  }, [handleUnauthorized]);
 
   // Smart Polling: Theo dõi trạng thái tab (visible/hidden)
   // Polling effect sẽ tự xử lý immediate poll khi tab quay lại
@@ -362,7 +440,7 @@ export default function Home() {
     if (!currentWorkbookId) return;
     try {
       setSyncStatus('syncing');
-      const res = await fetch(`/api/workbooks/${currentWorkbookId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/workbooks/${currentWorkbookId}`, { method: 'DELETE' });
       if (res.ok) {
         // Clear LS cache for this workbook
         localStorage.removeItem(PATIENTS_CACHE_KEY(currentWorkbookId));
@@ -413,7 +491,7 @@ export default function Home() {
       setSyncStatus('syncing');
 
       // Tải workbook gốc và các dòng dữ liệu bệnh nhân lên MongoDB
-      const res = await fetch('/api/workbooks', {
+      const res = await authFetch('/api/workbooks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -493,7 +571,7 @@ export default function Home() {
     // Debounced cloud sync (1.5s after last change)
     if (columnSyncTimerRef.current) clearTimeout(columnSyncTimerRef.current);
     columnSyncTimerRef.current = setTimeout(() => {
-      fetch(`/api/workbooks/${workbookId}`, {
+      authFetch(`/api/workbooks/${workbookId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ columns: newColumns }),
@@ -545,7 +623,7 @@ export default function Home() {
 
     try {
       setSyncStatus('syncing');
-      const res = await fetch(`/api/patients/${patientId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/patients/${patientId}`, { method: 'DELETE' });
       if (res.ok) {
         setPatients(prev => prev.filter((_, i) => i !== index));
         if (selectedRow === index) {
@@ -581,7 +659,7 @@ export default function Home() {
       // Background cloud sync
       setSyncStatus('syncing');
       try {
-        const res = await fetch(`/api/patients/${patientId}`, {
+        const res = await authFetch(`/api/patients/${patientId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedPatient)
@@ -631,7 +709,7 @@ export default function Home() {
 
       // Background cloud sync
       setSyncStatus('syncing');
-      fetch(`/api/patients/${patientId}`, {
+      authFetch(`/api/patients/${patientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedPatient)
@@ -713,7 +791,7 @@ export default function Home() {
 
     try {
       setSyncStatus('syncing');
-      const res = await fetch('/api/patients', {
+      const res = await authFetch('/api/patients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -753,7 +831,7 @@ export default function Home() {
       const orderedIds = newPatients.map(p => p._id);
       setSyncStatus('syncing');
       reorderTimerRef.current = setTimeout(() => {
-        fetch(`/api/workbooks/${currentWorkbookId}/reorder`, {
+        authFetch(`/api/workbooks/${currentWorkbookId}/reorder`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderedIds })
@@ -802,7 +880,7 @@ export default function Home() {
 
     try {
       setSyncStatus('syncing');
-      const res = await fetch('/api/patients', {
+      const res = await authFetch('/api/patients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -818,7 +896,7 @@ export default function Home() {
           newPatients.splice(atIndex, 0, createdPatient);
           
           const orderedIds = newPatients.map(p => p._id);
-          fetch(`/api/workbooks/${currentWorkbookId}/reorder`, {
+          authFetch(`/api/workbooks/${currentWorkbookId}/reorder`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderedIds })
@@ -872,7 +950,7 @@ export default function Home() {
 
     try {
       setSyncStatus('syncing');
-      const res = await fetch(`/api/patients/${patientId}`, {
+      const res = await authFetch(`/api/patients/${patientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(copiedPatientData)
@@ -913,7 +991,7 @@ export default function Home() {
 
     try {
       setSyncStatus('syncing');
-      const res = await fetch(`/api/patients/${patientId}`, {
+      const res = await authFetch(`/api/patients/${patientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(clearedData)
@@ -983,7 +1061,7 @@ export default function Home() {
     
     try {
       if (selectedIds.length > 0) {
-        const res = await fetch('/api/patients', {
+        const res = await authFetch('/api/patients', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1056,6 +1134,35 @@ export default function Home() {
                 </SelectContent>
               </Select>
 
+              {/* Chỉ báo trạng thái Khóa / Mở khóa quyền ghi */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setInputKey(accessKey);
+                  setKeyError('');
+                  setShowKeyModal(true);
+                }}
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded border text-[10px] h-6 font-semibold transition-all ${
+                  isKeyValid
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100/70'
+                    : 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100/70'
+                }`}
+                title={isKeyValid ? `Cấp quyền cho: ${keyUser}. Hết hạn: ${keyExpiry}. Click để đổi.` : 'Chế độ xem chỉ đọc. Click để nhập mã key chỉnh sửa.'}
+              >
+                {isKeyValid ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span className="font-bold text-[10px]">🔓 {keyUser}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span className="font-bold text-[10px]">🔒 Xem chỉ đọc</span>
+                  </>
+                )}
+              </Button>
+
               {/* Chỉ báo trạng thái kết nối & đồng bộ Cloud */}
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 border border-emerald-200">
                 {syncStatus === 'connected' && (
@@ -1124,7 +1231,8 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
-                className="gap-1 h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                disabled={!isKeyValid}
+                className="gap-1 h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
               >
                 <Upload className="h-3 w-3" />
                 Import
@@ -1144,7 +1252,8 @@ export default function Home() {
               <Button
                 size="sm"
                 onClick={handleAddNew}
-                className="gap-1 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={!isKeyValid}
+                className="gap-1 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
               >
                 <Plus className="h-3 w-3" />
                 Thêm
@@ -1155,7 +1264,8 @@ export default function Home() {
                 size="sm"
                 variant={enableToothDetail ? 'default' : 'outline'}
                 onClick={handleToggleToothDetail}
-                className={`gap-1 h-7 text-xs ${enableToothDetail ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'border-indigo-300 text-indigo-700 hover:bg-indigo-50'}`}
+                disabled={!isKeyValid}
+                className={`gap-1 h-7 text-xs ${enableToothDetail ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'border-indigo-300 text-indigo-700 hover:bg-indigo-50'} disabled:opacity-50`}
                 title="Bật/tắt bảng chọn chi tiết răng cho sâu răng, mất răng"
               >
                 Chi tiết răng: {enableToothDetail ? 'Bật' : 'Tắt'}
@@ -1186,8 +1296,8 @@ export default function Home() {
                   size="sm"
                   variant="outline"
                   onClick={handleToggleBatchXrayMode}
-                  disabled={patients.length === 0}
-                  className="gap-1 h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+                  disabled={patients.length === 0 || !isKeyValid}
+                  className="gap-1 h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-50"
                   title="Đặt Xquang mặc định hàng loạt"
                 >
                   <Radiation className="h-3 w-3" />
@@ -1200,8 +1310,8 @@ export default function Home() {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearAutoSave}
-                disabled={!currentWorkbookId}
-                className="gap-1 h-7 text-xs text-gray-400 hover:text-red-500"
+                disabled={!currentWorkbookId || !isKeyValid}
+                className="gap-1 h-7 text-xs text-gray-400 hover:text-red-500 disabled:opacity-30"
                 title="Xóa file hiện tại khỏi database"
               >
                 <X className="h-3.5 w-3.5" />
@@ -1309,6 +1419,7 @@ export default function Home() {
             selectedForBatchXray={selectedForBatchXray}
             onToggleBatchXray={handleToggleBatchXraySelection}
             onToggleSelectAllBatchXray={handleToggleSelectAllBatchXray}
+            isReadOnly={!isKeyValid}
           />
         </div>
       </div>
@@ -1345,7 +1456,84 @@ export default function Home() {
         onClearData={handleClearPatientData}
         canPaste={copiedPatientData !== null}
         enableToothDetail={enableToothDetail}
+        isReadOnly={!isKeyValid}
       />
+
+      {/* Key input dialog */}
+      {showKeyModal && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-[400px] border border-emerald-100 animate-in fade-in zoom-in-95 duration-150">
+            <h2 className="text-base font-bold text-emerald-800 mb-1 flex items-center gap-2">
+              🔑 Cấp quyền chỉnh sửa
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Nhập mã khóa dạng Windows License Key (25 ký tự, ví dụ: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX) để mở khóa quyền chỉnh sửa dữ liệu.
+            </p>
+            <input
+              type="text"
+              autoFocus
+              value={inputKey}
+              onChange={e => { setInputKey(e.target.value); setKeyError(''); }}
+              placeholder="Ví dụ: BCDFG-HJKMP-QRTVW-XY234-6789B"
+              className={`w-full border rounded-lg px-3 py-2 text-xs font-mono mb-1 outline-none focus:ring-2 uppercase ${
+                keyError
+                  ? 'border-red-400 focus:ring-red-300'
+                  : 'border-gray-300 focus:ring-emerald-300'
+              }`}
+            />
+            {keyError && (
+              <p className="text-[11px] text-red-500 mb-3">{keyError}</p>
+            )}
+            {!keyError && <div className="mb-3" />}
+            <div className="flex gap-2 justify-between items-center">
+              {isKeyValid && (
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('mediexcel_access_key');
+                    setAccessKey('');
+                    setIsKeyValid(false);
+                    setKeyUser('');
+                    setKeyExpiry('');
+                    setShowKeyModal(false);
+                    showToast('🔒 Đã hủy quyền chỉnh sửa, quay về Chế độ xem');
+                  }}
+                  className="px-3 py-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg font-medium"
+                >
+                  Xóa key hiện tại
+                </button>
+              )}
+              <div className="flex gap-2 ml-auto">
+                <button
+                  onClick={() => setShowKeyModal(false)}
+                  className="px-4 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 font-medium"
+                >
+                  Đóng
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!inputKey.trim()) {
+                      setKeyError('Vui lòng nhập mã key.');
+                      return;
+                    }
+                    const ok = await verifyKeyOnServer(inputKey.trim());
+                    if (ok) {
+                      localStorage.setItem('mediexcel_access_key', inputKey.trim());
+                      setAccessKey(inputKey.trim());
+                      setShowKeyModal(false);
+                      showToast(`🔓 Đã mở khóa quyền chỉnh sửa thành công!`);
+                    } else {
+                      setKeyError('Mã key không hợp lệ hoặc đã hết hạn.');
+                    }
+                  }}
+                  className="px-4 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                >
+                  Xác nhận
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

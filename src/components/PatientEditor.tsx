@@ -31,6 +31,7 @@ interface PatientEditorProps {
     onClearData?: () => void;
     canPaste?: boolean;
     enableToothDetail?: boolean;
+    isReadOnly?: boolean;
 }
 
 interface BPReading {
@@ -125,6 +126,7 @@ export function PatientEditor({
     onClearData,
     canPaste,
     enableToothDetail = true,
+    isReadOnly = false,
 }: PatientEditorProps) {
     // Tab state - luôn reset về "Thể Lực & Phân Loại" khi chuyển bệnh nhân
     const [activeTab, setActiveTab] = useState('vital');
@@ -1195,7 +1197,7 @@ export function PatientEditor({
                                     <Copy className="h-4 w-4" />
                                 </Button>
                             )}
-                            {onPaste && (
+                            {onPaste && !isReadOnly && (
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -1207,7 +1209,7 @@ export function PatientEditor({
                                     <ClipboardPaste className="h-4 w-4" />
                                 </Button>
                             )}
-                            {onClearData && (
+                            {onClearData && !isReadOnly && (
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -1248,12 +1250,25 @@ export function PatientEditor({
                     </div>
                 </DialogHeader>
 
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-                    <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
-                        <TabsTrigger value="vital">Thể Lực & Phân Loại</TabsTrigger>
-                        <TabsTrigger value="exam">Khám Tổng Quát</TabsTrigger>
-                        <TabsTrigger value="imaging">Cận Lâm Sàng</TabsTrigger>
-                    </TabsList>
+                {isReadOnly && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mx-1 mb-2 flex items-start gap-2 flex-shrink-0">
+                        <span className="text-sm">⚠️</span>
+                        <div>
+                            <h4 className="text-xs font-bold text-amber-800">Chế độ xem (Chỉ đọc)</h4>
+                            <p className="text-[10px] text-amber-700">
+                                Bạn đang ở chế độ Chỉ đọc. Nhập mã key hợp lệ ở màn hình chính để chỉnh sửa, thêm mới hoặc xóa dữ liệu bệnh nhân.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                <fieldset disabled={isReadOnly} className="contents flex-1 overflow-hidden flex flex-col">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
+                        <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+                            <TabsTrigger value="vital">Thể Lực & Phân Loại</TabsTrigger>
+                            <TabsTrigger value="exam">Khám Tổng Quát</TabsTrigger>
+                            <TabsTrigger value="imaging">Cận Lâm Sàng</TabsTrigger>
+                        </TabsList>
 
                     <div className="flex-1 overflow-auto mt-4">
                         {/* Tab 1: Vital - Gọn gàng hơn */}
@@ -2855,9 +2870,8 @@ export function PatientEditor({
                     </div>
                 </Tabs>
 
-                {/* Phân loại sức khỏe - Hiển thị ở tất cả các tab */}
-                <div className="flex-shrink-0 border-t pt-3 mt-3">
-                    <div className="flex items-center justify-between gap-4">
+                    {/* Phân loại sức khỏe - Hiển thị ở tất cả các tab */}
+                    <div className="flex-shrink-0 border-t pt-3 mt-3">
                         <div className="flex items-center gap-3">
                             <span className="font-semibold text-sm whitespace-nowrap">Phân loại SK:</span>
                             <div className="flex gap-1">
@@ -2867,8 +2881,10 @@ export function PatientEditor({
                                         size="sm"
                                         variant={classification === opt ? 'default' : 'outline'}
                                         onClick={() => {
-                                            setClassification(opt);
-                                            setIsClassificationManual(true);
+                                            if (!isReadOnly) {
+                                                setClassification(opt);
+                                                setIsClassificationManual(true);
+                                            }
                                         }}
                                         className="min-w-[40px] h-8"
                                     >
@@ -2882,20 +2898,30 @@ export function PatientEditor({
                                 </span>
                             )}
                         </div>
+                    </div>
+                </fieldset>
 
-                        <div className="flex gap-2">
-                            <Button variant="outline" onClick={onClose} size="sm">
-                                Hủy
+                <div className="flex-shrink-0 border-t pt-3 mt-3">
+                    <div className="flex justify-end gap-2">
+                        {isReadOnly ? (
+                            <Button onClick={onClose} size="sm" className="bg-gray-600 hover:bg-gray-700 text-white px-6">
+                                Đóng
                             </Button>
-                            <Button variant="secondary" onClick={handleSave} size="sm" className="gap-1">
-                                <Save className="h-3 w-3" />
-                                Lưu
-                            </Button>
-                            <Button onClick={handleSaveAndClose} size="sm" className="gap-1">
-                                <Save className="h-3 w-3" />
-                                Lưu & Đóng
-                            </Button>
-                        </div>
+                        ) : (
+                            <>
+                                <Button variant="outline" onClick={onClose} size="sm">
+                                    Hủy
+                                </Button>
+                                <Button variant="secondary" onClick={handleSave} size="sm" className="gap-1">
+                                    <Save className="h-3 w-3" />
+                                    Lưu
+                                </Button>
+                                <Button onClick={handleSaveAndClose} size="sm" className="gap-1">
+                                    <Save className="h-3 w-3" />
+                                    Lưu & Đóng
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </div>
             </DialogContent>

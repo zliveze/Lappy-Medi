@@ -2,9 +2,16 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Patient from '@/models/Patient';
 import Workbook from '@/models/Workbook';
+import { verifyAccessKey } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
+    const accessKey = request.headers.get('x-access-key');
+    const auth = await verifyAccessKey(accessKey);
+    if (!auth.valid) {
+      return NextResponse.json({ error: 'Mã khóa không hợp lệ hoặc đã hết hạn.' }, { status: 401 });
+    }
+
     await dbConnect();
     const body = await request.json();
     const { workbookId, ...patientData } = body;
@@ -68,6 +75,12 @@ function cleanUpdateData(body: any): Record<string, any> {
 
 export async function PATCH(request: Request) {
   try {
+    const accessKey = request.headers.get('x-access-key');
+    const auth = await verifyAccessKey(accessKey);
+    if (!auth.valid) {
+      return NextResponse.json({ error: 'Mã khóa không hợp lệ hoặc đã hết hạn.' }, { status: 401 });
+    }
+
     await dbConnect();
     const body = await request.json();
     const { ids, updateData } = body;
