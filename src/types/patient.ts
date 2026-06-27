@@ -172,6 +172,7 @@ export const ULTRASOUND_GYNECOLOGY_OPTIONS = [
 ];
 
 export const ULTRASOUND_CARDIAC_OPTIONS = [
+  'các van tim bình thường',
   'hở van 2 lá nhẹ',
   'hở van 2 lá 1/4',
   'hở van 3 lá nhẹ',

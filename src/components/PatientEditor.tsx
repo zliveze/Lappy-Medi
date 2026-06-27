@@ -2794,10 +2794,12 @@ export function PatientEditor({
                                                         <Label className="text-sm font-medium">Mẫu nhanh - Khác:</Label>
                                                         <div className="flex flex-wrap gap-1">
                                                             {[
+                                                                'siêu âm tim còn trong giới hạn bình thường',
                                                                 'các buồng tim không dày + dãn',
                                                                 'rối loạn chức năng tâm trương thất trái',
                                                                 'rối loạn chức năng tâm thu thất phải',
                                                                 'không rối loạn vận động vùng',
+                                                                'áp lực phổi bình thường',
                                                                 'tăng áp phổi',
                                                                 'không tăng áp phổi',
                                                                 'dày thất trái',
